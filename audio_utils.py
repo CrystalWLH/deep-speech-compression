@@ -49,16 +49,17 @@ def get_audio(audio_path, sample_rate, form, **kwargs):
   
   audio = load_raw_audio(audio_path, sample_rate)
   
-  if form == 'ampl_spec':
+  if form == 'ampl':
     
-    audio = wave2ampl_spectrogram(audio, **kwargs)
+    audio = wave2ampl_spectrogram(audio,fft_window = kwargs['fft_window'],
+                                  hop_length=kwargs['hop_length'])
     
-  elif form == 'power_spec':
+  elif form == 'power':
     
-    audio = wave2power_spectrogram(audio,**kwargs)
+    audio = wave2power_spectrogram(audio,fft_window = kwargs['fft_window'],
+                                  hop_length=kwargs['hop_length'])
+  elif form == 'mel':
     
-  elif form == 'mel_spec':
-    
-    audio = wave2mel_spectrogram(audio, sample_rate, **kwargs)
-    
+    audio = wave2mel_spectrogram(audio, sample_rate, n_mels = kwargs['n_mels'])
+                                 
   return audio

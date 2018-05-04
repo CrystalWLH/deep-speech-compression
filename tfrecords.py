@@ -8,9 +8,10 @@ Created on Tue May  1 16:54:47 2018
 
 import argparse
 import logging
+import numpy as np
 import tensorflow as tf
 from pathlib import Path
-from transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions
+from transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_char_encoding
 from audio_utils import get_audio
 
 #######################################
@@ -37,7 +38,27 @@ def parse_args():
   parser.add_argument('--limit', type = int, default = None, 
                       help = "Stop processing after having parsed this amount of audios. Default : stop only when job is done")
   
+  return parser.parse_args()
 
+
+def load_tfrecord_dataset(tfrecord_path, split, batch_size):
+  
+  dataset = tf.data.TFRecordDataset(tfrecord_path)
+  
+  dataset = dataset.map(parse_tfrecord_example, num_parallel_calls = 4)
+  
+  dataset = dataset.shuffle(buffer_size=2**16)
+  
+  if split == 'train':
+    
+    dataset = dataset.repeat()
+    
+  dataset = dataset.batch(batch_size)
+  
+  dataset = dataset.prefetch(batch_size)
+    
+  return dataset
+  
 
 def create_tfrecords_folder(out_path):
 
@@ -53,7 +74,7 @@ def create_tfrecords_folder(out_path):
 def parse_tfrecord_example(proto):
   
     features = {"audio": tf.VarLenFeature(tf.float32),
-                "shape": tf.FixedLenFeature((2,), tf.int64),
+                "audio_shape": tf.FixedLenFeature((2,), tf.int64),
                 "labels": tf.VarLenFeature(tf.int64)}
     
     parsed_features = tf.parse_single_example(proto, features)
@@ -63,7 +84,7 @@ def parse_tfrecord_example(proto):
                                                 sparse_audio.dense_shape,
                                                 sparse_audio.values),shape)
     
-    sparse_trans = parsed_features["transcription"]
+    sparse_trans = parsed_features["labels"]
     dense_trans = tf.sparse_to_dense(sparse_trans.indices,
                                      sparse_trans.dense_shape,
                                      sparse_trans.values)
@@ -72,12 +93,12 @@ def parse_tfrecord_example(proto):
 
 
 
-def tfrecord_write_example(writer,audio,shape, labels):
+def tfrecord_write_example(writer,audio, audio_shape, labels):
   
     example = tf.train.Example( features=tf.train.Features(
         feature={ 'audio': _float_feature(audio),
                  'labels': _int64_feature(labels),
-                 'shape' : _int64_feature(shape)
+                 'audio_shape' : _int64_feature(audio_shape)
                 }))
     
     writer.write(example.SerializeToString())
@@ -99,7 +120,7 @@ def load_data_or_write_tfrecords(data_path, out_path, split, id2encoded_transc, 
   
   if mode == 'tfrecord':
       
-    out_file = str(Path(out_path).join('librispeech_tfrecords.' + split))
+    out_file = str(Path(out_path).joinpath('librispeech_tfrecords.' + split))
     
     logger.info("Examples witll be stored in `{}`".format(str(out_file)))
     
@@ -130,21 +151,37 @@ def load_data_or_write_tfrecords(data_path, out_path, split, id2encoded_transc, 
         
         for audio_file in audio_files:
           
-          audio = get_audio(str(audio_file), sample_rate, form, **kwargs).flatten()
+          audio = get_audio(str(audio_file), sample_rate, form, **kwargs)
           
+          if form == 'raw':
+            
+            audio = audio[np.newaxis,:]
+          
+          print(audio)
+          
+          audio_shape = list(audio.shape)
+          
+          print(audio_shape)
+          
+          audio = audio.flatten()
+          
+          print("Reshaped audio : {}".format(audio))
+           
           transcription_index = audio_file.parts[-1].strip(audio_file.suffix)
           
           labels = id2encoded_transc[transcription_index]
           
-          audio_shape = list(audio.shape)
+          print(labels)
           
+        
           if mode == 'load':
             
             data.append((audio,labels))
             
           elif mode == 'tfrecord':
           
-            tfrecord_write_example(writer, audio, audio_shape, labels)
+            tfrecord_write_example(writer = writer, audio =  audio, 
+                                   audio_shape = audio_shape, labels = labels)
           
           parsed_file += 1
           
@@ -156,9 +193,15 @@ def load_data_or_write_tfrecords(data_path, out_path, split, id2encoded_transc, 
             
           if limit and parsed_file >= limit:
             
-            logger.info("Successfully loaded {} audios examples".format(limit))
+            logger.info("Successfully created {} audios examples".format(limit))
             
             break
+          
+          else:
+            
+            continue
+          
+        break
           
     if mode == 'load':
       
@@ -183,6 +226,8 @@ if __name__ == "__main__":
   elif args.loss == 'asg':
     
     raise NotImplementedError("Sorry! ASG loss is not available!")
+    
+  save_char_encoding(chars2ids, args.out)
     
   encoded_transcriptions = get_id2encoded_transcriptions(ids2trans, chars2ids)
   

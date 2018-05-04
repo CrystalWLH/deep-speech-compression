@@ -16,9 +16,11 @@ logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(messag
 
 def save_char_encoding(char_enc, path):
   
-  pickle.dumb(open(path + '.vocab', 'wb'), char_enc)
+  path = str(Path(path).joinpath('vocab.pkl'))
   
-  logger.info("Saved character to indices lookup at {}".format(char_enc))
+  pickle.dump( char_enc, open( path, 'wb'))
+  
+  logger.info("Saved character to indices lookup at `{}`".format(path))
 
 
 def sent_char_to_ids(sent,mapping):
@@ -29,7 +31,7 @@ def sent_char_to_ids(sent,mapping):
 def get_ctc_char2ids(chars_set):
   
   chars_set.remove(' ')
-  char2id = {c : idx for idx,c in chars_set}
+  char2id = {c : idx for idx,c in enumerate(chars_set)}
   char2id[' '] = len(char2id)
   
   logger.info("Modified characters id lookup for compatibility with CTC loss")
