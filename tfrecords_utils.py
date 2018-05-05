@@ -13,6 +13,7 @@ import tensorflow as tf
 from pathlib import Path
 from transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_char_encoding
 from audio_utils import get_audio
+from collections import namedtuple
 
 #######################################
 # CTC LOSS : LARGEST VALUE 
@@ -22,6 +23,12 @@ from audio_utils import get_audio
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
 
+
+class AudioExample(namedtuple('AudioExample', 'audio_path transcription')):
+  
+  def __str__(self):
+    return '%s(%s, %s)' % (self.__class__.__name__, self.audio_path, self.transcription)
+  
 
 def parse_args():
   parser = argparse.ArgumentParser(description='Create tfrecord files from LibriSpeech corpus')
@@ -112,24 +119,12 @@ def _float_feature(value):
   return tf.train.Feature(float_list=tf.train.FloatList(value=value))  
 
 
-def load_data_or_write_tfrecords(data_path, out_path, split, id2encoded_transc, mode = 'tfrecord',
-                      sample_rate = 16000, form = 'raw', limit = None, **kwargs ):
+def load_data_by_split(data_path, split, id2encoded_transc, limit):
   """
   Recursively load files from a LibriSpeech directory.
   """
-  
-  if mode == 'tfrecord':
-      
-    out_file = str(Path(out_path).joinpath('librispeech_tfrecords.' + split))
     
-    logger.info("Examples witll be stored in `{}`".format(str(out_file)))
-    
-    writer = tf.python_io.TFRecordWriter(out_file)
-    
-  elif mode == 'load':
-    
-    data = []
-    
+  data = []
     
   parsed_file = 0
   
@@ -151,46 +146,18 @@ def load_data_or_write_tfrecords(data_path, out_path, split, id2encoded_transc, 
         
         for audio_file in audio_files:
           
-          audio = get_audio(str(audio_file), sample_rate, form, **kwargs)
-          
-          if form == 'raw':
-            
-            audio = audio[np.newaxis,:]
-          
-          print(audio)
-          
-          audio_shape = list(audio.shape)
-          
-          print(audio_shape)
-          
-          audio = audio.flatten()
-          
-          print("Reshaped audio : {}".format(audio))
-           
           transcription_index = audio_file.parts[-1].strip(audio_file.suffix)
           
           labels = id2encoded_transc[transcription_index]
           
-          print(labels)
-          
-        
-          if mode == 'load':
-            
-            data.append((audio,labels))
-            
-          elif mode == 'tfrecord':
-          
-            tfrecord_write_example(writer = writer, audio =  audio, 
-                                   audio_shape = audio_shape, labels = labels)
+          data.append(AudioExample(str(audio_file),labels))
           
           parsed_file += 1
           
           if (parsed_file+1)%1000 == 0:
             
-            logger.info("{} examples parsed to `{}`".format(parsed_file,out_file))
-            
+            logger.info("Loaded {} examples".format(parsed_file))
           
-            
           if limit and parsed_file >= limit:
             
             logger.info("Successfully created {} audios examples".format(limit))
@@ -202,11 +169,40 @@ def load_data_or_write_tfrecords(data_path, out_path, split, id2encoded_transc, 
             continue
           
         break
-          
-    if mode == 'load':
       
-      return data
-          
+  return data
+
+
+def write_tfrecords_by_split(out_path, split, data, sample_rate, form, **kwargs ):
+  
+  out_file = str(Path(out_path).joinpath('librispeech_tfrecords.' + split))
+  
+  logger.info("Examples will be stored in `{}`".format(str(out_file)))
+  
+  writer = tf.python_io.TFRecordWriter(out_file)
+  
+  for idx,audio_example in enumerate(data):
+    
+    audio = get_audio(audio_example.audio_path, sample_rate, form, **kwargs)
+    
+    labels = audio_example.transcription
+    
+    if form == 'raw':
+      
+      audio = audio[np.newaxis,:]
+    
+    audio_shape = list(audio.shape)
+    print(audio_shape)
+    
+    audio = audio.flatten()
+    
+    tfrecord_write_example(writer = writer, audio =  audio, 
+                                   audio_shape = audio_shape, labels = labels)
+    
+    if (idx+1)%1000 == 0:
+      
+      logger.info("Successfully wrote {} tfrecord examples".format(idx))
+    
     
     
 if __name__ == "__main__":
@@ -231,11 +227,12 @@ if __name__ == "__main__":
     
   encoded_transcriptions = get_id2encoded_transcriptions(ids2trans, chars2ids)
   
-  create_tfrecords_folder(args.out)
+  split_data = load_data_by_split(data_path = args.data, split = args.split,
+                                 id2encoded_transc= encoded_transcriptions, limit = args.limit )
+
   
-  load_data_or_write_tfrecords(data_path= args.data, out_path = args.out, split = args.split,
-                               id2encoded_transc = encoded_transcriptions, mode = 'tfrecord',
-                               sample_rate = args.sr, form = args.format, limit = args.limit,
+  write_tfrecords_by_split(data= split_data, out_path = args.out, split = args.split,
+                               sample_rate = args.sr, form = args.format,
                                fft_window = 512, hop_length = 128, n_mels = 128)
   
   

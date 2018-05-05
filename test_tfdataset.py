@@ -7,11 +7,11 @@ Created on Fri May  4 17:18:06 2018
 """
 
 import tensorflow as tf
-from tfrecords import load_tfrecord_dataset
+from tfrecords_utils import load_tfrecord_dataset
 
 if __name__ == "__main__":
   
-  dataset = load_tfrecord_dataset('./data_tfrecords/librispeech_tfrecords.dev', 
+  dataset = load_tfrecord_dataset('./test/librispeech_tfrecords.dev', 
                                    split = 'dev', batch_size = 1)
   
   iterator = dataset.make_one_shot_iterator()
