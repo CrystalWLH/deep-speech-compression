@@ -23,14 +23,10 @@ from collections import namedtuple
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
 
-
-class AudioExample(namedtuple('AudioExample', 'audio_path transcription')):
-  
-  def __str__(self):
-    return '%s(%s, %s)' % (self.__class__.__name__, self.audio_path, self.transcription)
-  
-
 def parse_args():
+  """
+  Parse arguments for script.
+  """
   parser = argparse.ArgumentParser(description='Create tfrecord files from LibriSpeech corpus')
   parser.add_argument('-d', '--data', required=True, type = str, help='Path to unzipped LibriSpeech dataset')
   parser.add_argument('-s', '--split', required=True, type = str, 
@@ -48,13 +44,36 @@ def parse_args():
   return parser.parse_args()
 
 
-def load_tfrecord_dataset(tfrecord_path, split, batch_size):
+class AudioExample(namedtuple('AudioExample', 'audio_path transcription')):
+  """
+  Namedtuple custom class. It stores `audio_path` a string representing path to the audio and `transcription`, i.e. 
+  the correspondent encoded (int) transcription.
+  """
+  
+  def __str__(self):
+    return '%s(%s, %s)' % (self.__class__.__name__, self.audio_path, self.transcription)
+  
+
+def load_tfrecord_dataset(tfrecord_path, split, shuffle,batch_size):
+  """
+  Create dataset instance from tfrecord file. It prefetches mini-batch. If is train split dataset is repeated.
+  
+  :param:
+    tfrecord_path (str) : path to tfrecord file.
+    split (str) : part of the dataset. Choiches = (`train`,`dev`,`test`)
+    shuffle (int) : buffer size for shuffle operation
+    batch_size (int) : size of mini-batches
+    
+  :return:
+    dataset (tf.data.Dataset ) : batched dataset
+  """
+  
   
   dataset = tf.data.TFRecordDataset(tfrecord_path)
   
   dataset = dataset.map(parse_tfrecord_example, num_parallel_calls = 4)
   
-  dataset = dataset.shuffle(buffer_size=2**16)
+  dataset = dataset.shuffle(buffer_size=shuffle)
   
   if split == 'train':
     
@@ -68,6 +87,16 @@ def load_tfrecord_dataset(tfrecord_path, split, batch_size):
   
 
 def create_tfrecords_folder(out_path):
+  """
+  Create folder where tfrecord files will be stored
+  
+  :param:
+    out_path (str) : folder where to store tfrecords files
+    
+  :return:
+    out_path (pathlib.Path) : Path object
+  """
+  
 
   out_path = Path(out_path)
     
@@ -76,52 +105,89 @@ def create_tfrecords_folder(out_path):
     out_path.mkdir()
       
     logger.info("Created folder `{}` where tfrecord files will be stored".format(str(out_path)))
+    
+  return out_path
         
   
 def parse_tfrecord_example(proto):
+  """
+  Used to parse examples in tf.data.Dataset. 
+  Each example is mapped in its feature representation and its labels (int encoded transcription of audio).
   
-    features = {"audio": tf.VarLenFeature(tf.float32),
-                "audio_shape": tf.FixedLenFeature((2,), tf.int64),
-                "labels": tf.VarLenFeature(tf.int64)}
+  :param:
+    proto (tf.Tensor) : element stored in tf.data.TFRecordDataset
     
-    parsed_features = tf.parse_single_example(proto, features)
-    sparse_audio = parsed_features["audio"]
-    shape = tf.cast(parsed_features["audio_shape"], tf.int32)
-    dense_audio = tf.reshape(tf.sparse_to_dense(sparse_audio.indices,
-                                                sparse_audio.dense_shape,
-                                                sparse_audio.values),shape)
-    
-    sparse_trans = parsed_features["labels"]
-    dense_trans = tf.sparse_to_dense(sparse_trans.indices,
-                                     sparse_trans.dense_shape,
-                                     sparse_trans.values)
-    return dense_audio, tf.cast(dense_trans, tf.int32)
+  :return:
+    dense_audio (tf.Tensor) : audio
+    dense_trans (tf.Tensor) : encoded transcription
+  
+  """
+  
+  features = {"audio": tf.VarLenFeature(tf.float32),
+              "audio_shape": tf.FixedLenFeature((2,), tf.int64),
+              "labels": tf.VarLenFeature(tf.int64)}
+  
+  parsed_features = tf.parse_single_example(proto, features)
+  sparse_audio = parsed_features["audio"]
+  shape = tf.cast(parsed_features["audio_shape"], tf.int32)
+  dense_audio = tf.reshape(tf.sparse_to_dense(sparse_audio.indices,
+                                              sparse_audio.dense_shape,
+                                              sparse_audio.values),shape)
+  
+  sparse_trans = parsed_features["labels"]
+  dense_trans = tf.sparse_to_dense(sparse_trans.indices,
+                                   sparse_trans.dense_shape,
+                                   sparse_trans.values)
+  return dense_audio, tf.cast(dense_trans, tf.int32)
 
 
 
 
 def tfrecord_write_example(writer,audio, audio_shape, labels):
+  """
+  Write example to TFRecordWriter.
   
-    example = tf.train.Example( features=tf.train.Features(
-        feature={ 'audio': _float_feature(audio),
-                 'labels': _int64_feature(labels),
-                 'audio_shape' : _int64_feature(audio_shape)
-                }))
-    
-    writer.write(example.SerializeToString())
+  :param:
+    writer (tf.python_io.TFRecordWriter) : file where examples will be stored
+    audio (np.ndarry) : audio
+    audio_shape (list) : shape of audio representation
+    labels (list) : encoded transcription
+  """
+  
+  example = tf.train.Example( features=tf.train.Features(
+      feature={ 'audio': _float_feature(audio),
+               'labels': _int64_feature(labels),
+               'audio_shape' : _int64_feature(audio_shape)
+              }))
+  
+  writer.write(example.SerializeToString())
 
 
 def _int64_feature(value):
+  """
+  Map list of ints to tf compatible Features
+  """
   return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
 
 
 def _float_feature(value):
+  """
+  Map list of floats to tf compatible Features
+  """
   return tf.train.Feature(float_list=tf.train.FloatList(value=value))  
 
 
 def load_data_by_split(data_path, split, id2encoded_transc, limit):
   """
-  Recursively load files from a LibriSpeech directory.
+  Recursively load files from a LibriSpeech directory. If limit is not specified stop only when job is done.
+  
+  :param:
+    data_path (str) : path to main folder of LibriSpeech corpus
+    split (str) : part of the dataset to load. Choiches = (`train`,`dev`,`test`)
+    id2encoded_transc (dict) : dictionary of transcription ids (keys) and the transcription (values) in list of ints format
+    limit (int) : when to stop
+  :return:
+    data (list) : list of AudioExample objects
   """
     
   data = []
@@ -174,8 +240,23 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
 
 
 def write_tfrecords_by_split(out_path, split, data, sample_rate, form, **kwargs ):
+  """
+  Write data loaded with `load_data_by_split` to a tf record file. If form is not specified raw audio are loaded. Otherwise `kwargs` passed
+  to transformation function.
+  Raw audio expanded to 2D for compatibility with input to Convolution operations.
   
-  out_file = str(Path(out_path).joinpath('librispeech_tfrecords.' + split))
+  :param:
+    out_path (str) : folder where to store tfrecord data
+    split (str) : part of dataset
+    data (list) : list of AudioExample objects
+    sample_rate (int) : rate at which audio was sampled when loading
+    form (str) : representation. Choices = (`ampl`,`power`,`mel`)
+    
+  """
+  
+  out_path = create_tfrecords_folder(out_path)
+  
+  out_file = str(out_path.joinpath('librispeech_tfrecords.' + split))
   
   logger.info("Examples will be stored in `{}`".format(str(out_file)))
   

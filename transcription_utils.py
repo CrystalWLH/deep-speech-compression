@@ -15,6 +15,13 @@ logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(messag
 
 
 def save_char_encoding(char_enc, path):
+  """
+  Util funciton to save in pickle format character lookup.
+  
+  :param:
+    char_enc (dict) : character lookup
+    path (str) : path where to store item
+  """
   
   path = str(Path(path).joinpath('vocab.pkl'))
   
@@ -24,11 +31,32 @@ def save_char_encoding(char_enc, path):
 
 
 def sent_char_to_ids(sent,mapping):
+  """
+  Map sentece to ids. 
+  
+  Input MUST BE LIST OF CHARACTERS.
+  
+  :param:
+    sent (list) : list of characters
+    mapping (dict) : characters lookup (char2id)
+    
+  :return:
+    mappend sentence (list)
+  """
   
   return [mapping.get(c) for c in sent]
 
 
 def get_ctc_char2ids(chars_set):
+  """
+  Transform character lookup for CTC loss. 
+  Blank char must be the last (highest lookup ID). See https://www.tensorflow.org/api_docs/python/tf/nn/ctc_loss .
+  
+  :param:
+    char_set (set) : set of characters
+  :return:
+    char2id (dict) : character lookup
+  """
   
   chars_set.remove(' ')
   char2id = {c : idx for idx,c in enumerate(chars_set)}
@@ -39,6 +67,16 @@ def get_ctc_char2ids(chars_set):
   return char2id
 
 def get_id2encoded_transcriptions(ids2trans,mapping):
+  """
+  Create lookup table for transcriptions. Each transcription id is associeted with its encoded representation (char2id).
+  
+  :param:
+    id2trans (dict) : dictionary of transcription ids (keys) and the actual transcription (values) in list of chars format
+    mapping (dict) : characters lookup
+  :return:
+    ids2encoded_trans (dict) :  dictionary of transcription ids (keys) and the transcription (values) in list of ints format
+  
+  """
   
   ids2encoded_trans = {ref : sent_char_to_ids(sent,mapping) for ref,sent in ids2trans.items()}
   
@@ -49,7 +87,15 @@ def get_id2encoded_transcriptions(ids2trans,mapping):
 
 def create_vocab_id2transcript(dir_path):
   """
-  Create transcriptions labels within folder
+  Traverse LibriSpeech corpus and create:
+    - lookup table for transcriptions 
+    - vocabulary : character set
+    
+  :param:
+    dir_path (str) : path to main folder of LibriSpeech corpus
+  :return:
+    char_set (set) : character set
+    ids2transcriptions (dict) :  dictionary of transcription ids (keys) and the actual transcription (values) in list of chars format
   """
   
   chars_set = set()
