@@ -9,6 +9,7 @@ __pycache__/
 # external resources
 LibriSpeech/
 data_tfrecords/
+test/
 
 # Distribution / packaging
 .Python

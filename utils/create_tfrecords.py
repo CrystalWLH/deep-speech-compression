@@ -11,8 +11,8 @@ import logging
 import numpy as np
 import tensorflow as tf
 from pathlib import Path
-from transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_char_encoding
-from audio_utils import get_audio
+from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_char_encoding
+from utils.audio_utils import get_audio
 from collections import namedtuple
 
 #######################################
@@ -54,38 +54,6 @@ class AudioExample(namedtuple('AudioExample', 'audio_path transcription')):
     return '%s(%s, %s)' % (self.__class__.__name__, self.audio_path, self.transcription)
   
 
-def load_tfrecord_dataset(tfrecord_path, split, shuffle,batch_size):
-  """
-  Create dataset instance from tfrecord file. It prefetches mini-batch. If is train split dataset is repeated.
-  
-  :param:
-    tfrecord_path (str) : path to tfrecord file.
-    split (str) : part of the dataset. Choiches = (`train`,`dev`,`test`)
-    shuffle (int) : buffer size for shuffle operation
-    batch_size (int) : size of mini-batches
-    
-  :return:
-    dataset (tf.data.Dataset ) : batched dataset
-  """
-  
-  
-  dataset = tf.data.TFRecordDataset(tfrecord_path)
-  
-  dataset = dataset.map(parse_tfrecord_example, num_parallel_calls = 4)
-  
-  dataset = dataset.shuffle(buffer_size=shuffle)
-  
-  if split == 'train':
-    
-    dataset = dataset.repeat()
-    
-  dataset = dataset.batch(batch_size)
-  
-  dataset = dataset.prefetch(batch_size)
-    
-  return dataset
-  
-
 def create_tfrecords_folder(out_path):
   """
   Create folder where tfrecord files will be stored
@@ -108,38 +76,6 @@ def create_tfrecords_folder(out_path):
     
   return out_path
         
-  
-def parse_tfrecord_example(proto):
-  """
-  Used to parse examples in tf.data.Dataset. 
-  Each example is mapped in its feature representation and its labels (int encoded transcription of audio).
-  
-  :param:
-    proto (tf.Tensor) : element stored in tf.data.TFRecordDataset
-    
-  :return:
-    dense_audio (tf.Tensor) : audio
-    dense_trans (tf.Tensor) : encoded transcription
-  
-  """
-  
-  features = {"audio": tf.VarLenFeature(tf.float32),
-              "audio_shape": tf.FixedLenFeature((2,), tf.int64),
-              "labels": tf.VarLenFeature(tf.int64)}
-  
-  parsed_features = tf.parse_single_example(proto, features)
-  sparse_audio = parsed_features["audio"]
-  shape = tf.cast(parsed_features["audio_shape"], tf.int32)
-  dense_audio = tf.reshape(tf.sparse_to_dense(sparse_audio.indices,
-                                              sparse_audio.dense_shape,
-                                              sparse_audio.values),shape)
-  
-  sparse_trans = parsed_features["labels"]
-  dense_trans = tf.sparse_to_dense(sparse_trans.indices,
-                                   sparse_trans.dense_shape,
-                                   sparse_trans.values)
-  return dense_audio, tf.cast(dense_trans, tf.int32)
-
 
 
 
@@ -283,6 +219,8 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, **kwargs 
     if (idx+1)%1000 == 0:
       
       logger.info("Successfully wrote {} tfrecord examples".format(idx))
+      
+  logger.info("Completed writing examples in tfrecords format at `{}`".format(out_file))
     
     
     
