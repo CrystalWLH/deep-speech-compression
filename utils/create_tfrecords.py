@@ -38,7 +38,7 @@ def parse_args():
   parser.add_argument('-l', '--loss' , type = str, default = 'ctc', choices = ('ctc','asg'), 
                       help = 'Specify loss function since affects encoding of characters in transcriptions')
   parser.add_argument('--sr', type = int, default = 16000, help = 'Sample rate with which audios are loaded. Default to : 16000')
-  parser.add_argument('--limit', type = int, default = None, 
+  parser.add_argument('--limit',type = int, default = None, 
                       help = "Stop processing after having parsed this amount of audios. Default : stop only when job is done")
   
   return parser.parse_args()
@@ -77,8 +77,6 @@ def create_tfrecords_folder(out_path):
   return out_path
         
 
-
-
 def tfrecord_write_example(writer,audio, audio_shape, labels):
   """
   Write example to TFRecordWriter.
@@ -92,8 +90,8 @@ def tfrecord_write_example(writer,audio, audio_shape, labels):
   
   example = tf.train.Example( features=tf.train.Features(
       feature={ 'audio': _float_feature(audio),
+               'audio_shape' : _int64_feature(audio_shape),
                'labels': _int64_feature(labels),
-               'audio_shape' : _int64_feature(audio_shape)
               }))
   
   writer.write(example.SerializeToString())
@@ -127,51 +125,27 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   """
     
   data = []
-    
-  parsed_file = 0
-  
+      
   main_path = Path(data_path)
   
   splits_folders = [child for child in main_path.iterdir() if child.is_dir()]
   
-  for split_folder in splits_folders:
+  audio_files = [audio for split_folder in splits_folders for audio in split_folder.glob('**/*.flac')]
+  
+  for idx,audio_file in enumerate(audio_files):
     
-    if split_folder.parts[-1].startswith(split):
+    transcription_index = audio_file.parts[-1].strip(audio_file.suffix)
+          
+    labels = id2encoded_transc[transcription_index]
+          
+    data.append(AudioExample(str(audio_file),labels))
       
-      logger.info("Start processing folder `{}`".format(str(split_folder)))
+    if limit and idx >= limit:
       
-      chapters = [chap for book in split_folder.iterdir() for chap in book.iterdir()]
+      logger.info("Successfully loaded {} audios examples".format(limit))
       
-      for chap in chapters:
-        
-        audio_files = [audio for audio in chap.glob('./*.flac')]
-        
-        for audio_file in audio_files:
-          
-          transcription_index = audio_file.parts[-1].strip(audio_file.suffix)
-          
-          labels = id2encoded_transc[transcription_index]
-          
-          data.append(AudioExample(str(audio_file),labels))
-          
-          parsed_file += 1
-          
-          if (parsed_file+1)%1000 == 0:
-            
-            logger.info("Loaded {} examples".format(parsed_file))
-          
-          if limit and parsed_file >= limit:
-            
-            logger.info("Successfully created {} audios examples".format(limit))
-            
-            break
-          
-          else:
-            
-            continue
-          
-        break
-      
+      break
+  
   return data
 
 
@@ -198,7 +172,7 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, **kwargs 
   
   writer = tf.python_io.TFRecordWriter(out_file)
   
-  for idx,audio_example in enumerate(data):
+  for idx,audio_example in enumerate(data,start = 1):
     
     audio = get_audio(audio_example.audio_path, sample_rate, form, **kwargs)
     
@@ -209,16 +183,17 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, **kwargs 
       audio = audio[np.newaxis,:]
     
     audio_shape = list(audio.shape)
-    print(audio_shape)
     
     audio = audio.flatten()
     
     tfrecord_write_example(writer = writer, audio =  audio, 
                                    audio_shape = audio_shape, labels = labels)
     
-    if (idx+1)%1000 == 0:
+    if (idx)%1000 == 0:
       
       logger.info("Successfully wrote {} tfrecord examples".format(idx))
+      
+  writer.close()   
       
   logger.info("Completed writing examples in tfrecords format at `{}`".format(out_file))
     

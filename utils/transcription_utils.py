@@ -14,6 +14,15 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
 
 
+def get_char_encoding(file_path):
+  
+  file_path = str(Path(file_path))
+  
+  item = pickle.load(open(file_path, mode = "rb"))
+  
+  return item
+
+
 def save_char_encoding(char_enc, path):
   """
   Util funciton to save in pickle format character lookup.
