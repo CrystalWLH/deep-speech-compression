@@ -6,6 +6,9 @@ Created on Sun May  6 15:53:15 2018
 @author: Samuele Garda
 """
 
+#TODO
+# add in create tfrecords seq_len so it can be passed to ctc_loss
+
 import tensorflow as tf
 
 def parse_tfrecord_example(proto):
@@ -30,6 +33,7 @@ def parse_tfrecord_example(proto):
   
   sparse_audio = parsed_features["audio"]
   shape = tf.cast(parsed_features["audio_shape"], tf.int32)
+
   dense_audio = tf.reshape(tf.sparse_to_dense(sparse_audio.indices,
                                               sparse_audio.dense_shape,
                                               sparse_audio.values),shape)
@@ -38,8 +42,12 @@ def parse_tfrecord_example(proto):
   dense_trans = tf.sparse_to_dense(sparse_trans.indices,
                                    sparse_trans.dense_shape,
                                    sparse_trans.values)
-  return dense_audio, tf.cast(dense_trans, tf.int32)
 
+  #features = {'audio' : dense_audio, 'shape' : shape, 'labels' : dense_trans}
+
+  return dense_audio, shape, tf.cast(dense_trans, tf.int32)
+#return features, sparse_trans #
+   
 
 
 def model_input_func_tfr(tfrecord_path, split, shuffle, batch_size):
@@ -66,28 +74,32 @@ def model_input_func_tfr(tfrecord_path, split, shuffle, batch_size):
     
     dataset = dataset.repeat()
         
-  dataset = dataset.padded_batch(batch_size, padded_shapes=(tf.TensorShape([None,None]),tf.TensorShape([None])))
+  dataset = dataset.padded_batch(batch_size, padded_shapes= ([257,-1],[2],[-1]))
   
-  dataset = dataset.prefetch(batch_size)
+  audio,shape,labels = dataset.make_one_shot_iterator().get_next()
   
-  iterator = dataset.make_one_shot_iterator()
-  
-  features, labels = iterator.get_next()
-    
+  features = {'audio' : audio, 'shape' : shape}
+      
   return features, labels
 
 
 if __name__ == "__main__":
   
   next_element = model_input_func_tfr('./test/librispeech_tfrecords.dev', shuffle = 10,
-                                   split = 'dev', batch_size = 5)
+                                   split = 'dev', batch_size = 1)
   
+  max_len = 0
+  max_trans = 0
   with tf.Session() as sess:
-    for i in range(2):
+    for i in range(102):
       try:
-        batch_x,  batch_y = sess.run(next_element)
-#        print(values)
-        print([x.shape for x in batch_x])
-        print('\n\n') 
+	    
+        audio,shape,batch_y = sess.run(next_element)
+       # if batch_x[0].shape[1] > max_len:
+       #   max_len = batch_x[0].shape[1]
+       # if batch_y[0].shape[0] > max_trans:
+       #   max_trans = batch_y[0].shape[0]
       except tf.errors.OutOfRangeError:
         print("End of dataset")
+        print("Max len : {}".format(max_len))
+        print("Max trans : {}".format(max_trans))

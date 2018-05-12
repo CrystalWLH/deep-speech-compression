@@ -75,14 +75,16 @@ if __name__ == '__main__':
   
   estimator = tf.estimator.Estimator(model_fn=teacher_model_function, params=params,
                                      model_dir= params.get('save_models'),config=config)
-  
-  logging_hook = tf.train.LoggingTensorHook({"ler": "ler"}, every_n_iter=2)
     
+  def input_fn():
+    return model_input_func_tfr(tfrecord_path = './test/librispeech_tfrecords.dev',
+                                                            shuffle = 10,split = 'dev', batch_size = 2 )
+  
+
+  print(params.get('mode'))  
   if params.get('mode') == 'train':
-    estimator.train(input_fn= lambda : model_input_func_tfr(tfrecord_path = './test/librispeech_tfrecords.dev',
-                                                            shuffle = 10,split = 'dev', batch_size = 2 ),
-                    steps= params.get('steps'),
-                    hooks=[logging_hook])
+    estimator.train(input_fn= input_fn,
+                    steps= params.get('steps'))
     
 #  elif params.get('mode') == 'predict':
 #    pred = estimator.predict(input_fn=input_fn)

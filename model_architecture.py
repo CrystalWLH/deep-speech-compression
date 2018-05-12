@@ -64,23 +64,28 @@ def get_batch_seqs_len(inputs, data_format):
 def dense_to_sparse(dense_tensor):
   
   idx = tf.where(tf.not_equal(dense_tensor, 0))
-  sparse_tensor = tf.SparseTensor(idx, tf.gather_nd(dense_tensor, idx), dense_tensor.get_shape())
+  values = tf.gather_nd(dense_tensor, idx)
+  shape = tf.shape(dense_tensor,out_type=tf.int32)
+  sparse_tensor = tf.SparseTensor(idx, values , shape)
   
   return sparse_tensor
     
 
 
 def teacher_model_function(features, labels, mode, params):
-  
+
+  print(features['shape'].get_shape())
+
+  audio_features = features['audio']
+    
   if params.get('data_format') == "channels_last":
     
-    features = tf.transpose(features, [0, 2, 1])
+    audio_features = tf.transpose(audio_features, [0, 2, 1])
     
-  one_hot_labels = tf.one_hot(labels, params.get('vocab_size'))
       
   with tf.variable_scope("model"):
     
-    pre_out = convolutional_sequence(inputs = features, conv_type = params.get('conv_type'),
+    pre_out = convolutional_sequence(inputs = audio_features, conv_type = params.get('conv_type'),
                             filters = params.get('teacher').get('filters'),
                             widths = params.get('teacher').get('widths'),
                             strides = params.get('teacher').get('strides'),
@@ -94,9 +99,8 @@ def teacher_model_function(features, labels, mode, params):
     
     
   with tf.name_scope('loss'):
-#    seqs_len = get_batch_seqs_len(features, params.get('data_format'))
-    batches_ctc_loss = tf.nn.ctc_loss(labels = dense_to_sparse(one_hot_labels),
-                                      inputs =  logits, sequence_length = tf.cast([200,200], tf.int32))
+    batches_ctc_loss = tf.nn.ctc_loss(labels = tf.contrib.layers.dense_to_sparse(labels),
+                                      inputs =  logits, sequence_length = 100)
     loss = tf.reduce_mean(batches_ctc_loss)
     tf.summary.scalar('ctc_loss',loss)
     
@@ -108,29 +112,29 @@ def teacher_model_function(features, labels, mode, params):
     return tf.estimator.EstimatorSpec(mode=mode, loss=loss,train_op=train_step) 
       
       
-#  elif mode == tf.estimator.ModeKeys.PREDICT:
-#    
-#    sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
-#    
-#    dense_decoded = tf.sparse_to_dense(sparse_decoded.indices,
-#                                       sparse_decoded.dense_shape,
-#                                       sparse_decoded.values)
-#    
-#    predictions = {'decoding' : dense_decoded}
-#        
-#    return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
-#  
-#  
-#  elif mode == tf.estimator.ModeKeys.EVAL:
-#    
-#    ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), labels))
-#    
-#    eval_metric_ops = {"ler": ler}
-#    
-#    return tf.estimator.EstimatorSpec(mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
-#  
-#    
-#            
+  elif mode == tf.estimator.ModeKeys.PREDICT:
+    
+    sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
+    
+    dense_decoded = tf.sparse_to_dense(sparse_decoded.indices,
+                                       sparse_decoded.dense_shape,
+                                       sparse_decoded.values)
+    
+    predictions = {'decoding' : dense_decoded}
+        
+    return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
+  
+  
+  elif mode == tf.estimator.ModeKeys.EVAL:
+    
+    ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), labels))
+    
+    eval_metric_ops = {"ler": ler}
+    
+    return tf.estimator.EstimatorSpec(mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
+  
+    
+            
     
     
     

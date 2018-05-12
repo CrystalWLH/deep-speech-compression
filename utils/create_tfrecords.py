@@ -75,7 +75,7 @@ def create_tfrecords_folder(out_path):
     logger.info("Created folder `{}` where tfrecord files will be stored".format(str(out_path)))
     
   return out_path
-        
+    
 
 def tfrecord_write_example(writer,audio, audio_shape, labels):
   """
