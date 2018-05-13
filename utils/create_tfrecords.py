@@ -77,7 +77,7 @@ def create_tfrecords_folder(out_path):
   return out_path
     
 
-def tfrecord_write_example(writer,audio, audio_shape, labels):
+def tfrecord_write_example(writer,audio, audio_shape,seq_len, labels):
   """
   Write example to TFRecordWriter.
   
@@ -89,8 +89,9 @@ def tfrecord_write_example(writer,audio, audio_shape, labels):
   """
   
   example = tf.train.Example( features=tf.train.Features(
-      feature={ 'audio': _float_feature(audio),
+      feature={'audio': _float_feature(audio),
                'audio_shape' : _int64_feature(audio_shape),
+               'seq_len' : _int64_feature([seq_len]),
                'labels': _int64_feature(labels),
               }))
   
@@ -130,9 +131,15 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   
   splits_folders = [child for child in main_path.iterdir() if child.is_dir()]
   
-  audio_files = [audio for split_folder in splits_folders for audio in split_folder.glob('**/*.flac')]
+  def audio_paths_gen():
+    """
+    Generator of audio paths. Avoid loading all of them into memory
+    """
+    for split_folder in splits_folders:
+      for audio in split_folder.glob('**/*.flac'):
+        yield audio
   
-  for idx,audio_file in enumerate(audio_files):
+  for idx,audio_file in enumerate(audio_paths_gen()):
     
     transcription_index = audio_file.parts[-1].strip(audio_file.suffix)
           
@@ -184,10 +191,12 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, **kwargs 
     
     audio_shape = list(audio.shape)
     
+    seq_len = audio_shape[1]
+        
     audio = audio.flatten()
     
     tfrecord_write_example(writer = writer, audio =  audio, 
-                                   audio_shape = audio_shape, labels = labels)
+                                   audio_shape = audio_shape,seq_len = seq_len,labels = labels)
     
     if (idx)%1000 == 0:
       
@@ -223,7 +232,6 @@ if __name__ == "__main__":
   
   split_data = load_data_by_split(data_path = args.data, split = args.split,
                                  id2encoded_transc= encoded_transcriptions, limit = args.limit )
-
   
   write_tfrecords_by_split(data= split_data, out_path = args.out, split = args.split,
                                sample_rate = args.sr, form = args.format,

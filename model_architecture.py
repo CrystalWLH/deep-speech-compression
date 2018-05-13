@@ -48,36 +48,15 @@ def convolutional_sequence(conv_type, inputs, filters, widths, strides, activati
   return prev_layer
 
 
-def get_batch_seqs_len(inputs, data_format):
-  
-  len_index = -1 if data_format == 'channel_first' else 1
-  
-  unpack_batch = tf.unstack(inputs, axis = 0)
-  
-  seqs_len = [x.get_shape().as_list()[len_index] for x in unpack_batch]
-  
-  sequences_len = tf.cast(seqs_len, tf.int32)
-  
-  return sequences_len
-
-
-def dense_to_sparse(dense_tensor):
-  
-  idx = tf.where(tf.not_equal(dense_tensor, 0))
-  values = tf.gather_nd(dense_tensor, idx)
-  shape = tf.shape(dense_tensor,out_type=tf.int32)
-  sparse_tensor = tf.SparseTensor(idx, values , shape)
-  
-  return sparse_tensor
-    
-
 
 def teacher_model_function(features, labels, mode, params):
 
-  print(features['shape'].get_shape())
-
   audio_features = features['audio']
-    
+  
+  seqs_len = features['seq_len']
+  
+  sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
+      
   if params.get('data_format') == "channels_last":
     
     audio_features = tf.transpose(audio_features, [0, 2, 1])
@@ -98,40 +77,60 @@ def teacher_model_function(features, labels, mode, params):
                                   padding="same", data_format=params.get('data_format'),name="logits")
     
     
-  with tf.name_scope('loss'):
-    batches_ctc_loss = tf.nn.ctc_loss(labels = tf.contrib.layers.dense_to_sparse(labels),
-                                      inputs =  logits, sequence_length = 100)
-    loss = tf.reduce_mean(batches_ctc_loss)
-    tf.summary.scalar('ctc_loss',loss)
+        # get logits in time major : [max_time, batch_size, num_classes]
+    if params.get('data_format') == 'channels_first':
+      logits = tf.transpose(logits, (2,0,1))
+      
+    elif params.get('data_format') == 'channels_last':
+      logits = tf.transpose(logits, (1,0,2))
+      
     
-  if mode == tf.estimator.ModeKeys.TRAIN:
-      
-    with tf.variable_scope("optimizer"):
-      train_step = tf.train.AdamOptimizer().minimize(loss)
-      
-    return tf.estimator.EstimatorSpec(mode=mode, loss=loss,train_op=train_step) 
-      
-      
-  elif mode == tf.estimator.ModeKeys.PREDICT:
+  with tf.name_scope('predictions'):
     
     sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
+
+  if mode == tf.estimator.ModeKeys.PREDICT:
     
-    dense_decoded = tf.sparse_to_dense(sparse_decoded.indices,
-                                       sparse_decoded.dense_shape,
-                                       sparse_decoded.values)
+    print("I am here in Predict")
     
-    predictions = {'decoding' : dense_decoded}
-        
+    predictions = {'decoding' : sparse_decoded, 'log_prob' : log_prob}
+      
     return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
   
   
-  elif mode == tf.estimator.ModeKeys.EVAL:
+  with tf.name_scope('loss'):
     
-    ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), labels))
+    batches_ctc_loss = tf.nn.ctc_loss(labels = sparse_labels,
+                                      inputs =  logits, 
+                                      sequence_length = seqs_len)
+    loss = tf.reduce_mean(batches_ctc_loss)
+    tf.summary.scalar('ctc_loss',loss)
+
     
-    eval_metric_ops = {"ler": ler}
+  if mode == tf.estimator.ModeKeys.TRAIN:
     
-    return tf.estimator.EstimatorSpec(mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
+    print("I am here in Train")
+    
+      
+    with tf.variable_scope("optimizer"):
+      train_step = tf.train.AdamOptimizer().minimize(loss,
+                                                      global_step=tf.train.get_global_step())
+      
+    return tf.estimator.EstimatorSpec(mode=mode, loss=loss,train_op=train_step) 
+  
+  
+  assert mode == tf.estimator.ModeKeys.EVAL, "Wrong mode"
+
+  print("Evaluating")
+
+   
+  
+  ler = tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels)
+  mean_ler, op = tf.metrics.mean(ler)
+  
+  metrics = {"ler": (mean_ler, op)}
+  
+  return tf.estimator.EstimatorSpec(mode=mode, loss=loss, eval_metric_ops=metrics)
   
     
             

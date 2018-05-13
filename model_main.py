@@ -22,11 +22,13 @@ def parse_arguments():
   
   parser = argparse.ArgumentParser(description='Run experiments for Deep ASR model compression through Teacher-Student training')
   parser.add_argument('-c', '--config', required=True, help='Architecture configuration file')
+  parser.add_argument('-m', '--mode', required=True, choices = ('train','eval','predict'), 
+                      help='Mode for experiment. One of :(`train`,`eval`,`predict`) ')
   args = parser.parse_args()
   
   configuration = ConfigParser(allow_no_value=False)
   configuration.read(args.config)
-  return configuration
+  return args,configuration
 
 
 def config2params(configuration):
@@ -67,9 +69,9 @@ def config2params(configuration):
 
 if __name__ == '__main__':
   
-  args = parse_arguments()
+  args,config_file = parse_arguments()
   
-  params = config2params(args)
+  params = config2params(config_file)
   
   config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1, save_checkpoints_steps=2)
   
@@ -81,26 +83,25 @@ if __name__ == '__main__':
                                                             shuffle = 10,split = 'dev', batch_size = 2 )
   
 
-  print(params.get('mode'))  
-  if params.get('mode') == 'train':
+  if args.mode == "train":
     estimator.train(input_fn= input_fn,
                     steps= params.get('steps'))
     
-#  elif params.get('mode') == 'predict':
-#    pred = estimator.predict(input_fn=input_fn)
-#    
-#    print(pred)
-#    
-#  elif params.get('mode') == "eval":
-#    res = estimator.evaluate(input_fn=input_fn)
-#    print("\n")
-#    print("ler : {}".format(res))
-#
-#  
-#  
-#
-#
-#  
+  elif args.mode == "predict":
+    print("Making predictions")
+    pred = estimator.predict(input_fn=input_fn)
+    print(type(pred))
+          
+  elif args.mode == "eval":
+    res = estimator.evaluate(input_fn=input_fn)
+    print("\n")
+    print("ler : {}".format(res))
+
+  
+  
+
+
+  
   
   
   

@@ -10,6 +10,7 @@ __pycache__/
 LibriSpeech/
 data_tfrecords/
 test/
+models/
 
 # Distribution / packaging
 .Python

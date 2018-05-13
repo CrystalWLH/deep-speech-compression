@@ -59,7 +59,8 @@ def sent_char_to_ids(sent,mapping):
 def get_ctc_char2ids(chars_set):
   """
   Transform character lookup for CTC loss. 
-  Blank char must be the last (highest lookup ID). See https://www.tensorflow.org/api_docs/python/tf/nn/ctc_loss .
+  Blank char must be the last (highest lookup ID). See https://www.tensorflow.org/api_docs/python/tf/nn/ctc_loss 
+  Enumeration starts from `1`. Id `0` kept for padding. 
   
   :param:
     char_set (set) : set of characters
@@ -67,9 +68,8 @@ def get_ctc_char2ids(chars_set):
     char2id (dict) : character lookup
   """
   
-  chars_set.remove(' ')
   char2id = {c : idx for idx,c in enumerate(chars_set)}
-  char2id[' '] = len(char2id)
+  char2id['blank'] = len(char2id)
   
   logger.info("Modified characters id lookup for compatibility with CTC loss")
   
@@ -115,9 +115,15 @@ def create_vocab_id2transcript(dir_path):
   
   splits_folders = [child for child in main_path.iterdir() if child.is_dir()]
   
-  trans_files = [trans for book in splits_folders for trans in book.glob('**/*.txt')]
+  def trans_files_gen():
+    """
+    Generator of transcription file paths. Avoid loading all of them into memory
+    """
+    for split_folder in splits_folders:
+      for trans in split_folder.glob('**/*.txt'):
+        yield trans
   
-  for trans_file in trans_files:
+  for trans_file in trans_files_gen():
     
     with trans_file.open() as tr_file:
       for line in tr_file:

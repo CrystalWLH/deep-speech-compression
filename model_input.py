@@ -7,7 +7,7 @@ Created on Sun May  6 15:53:15 2018
 """
 
 #TODO
-# add in create tfrecords seq_len so it can be passed to ctc_loss
+# EVAL AND PREDICT NOT WORKING! FFS 
 
 import tensorflow as tf
 
@@ -27,11 +27,15 @@ def parse_tfrecord_example(proto):
   
   features = {"audio": tf.VarLenFeature(tf.float32),
               "audio_shape": tf.FixedLenFeature((2,), tf.int64),
+              "seq_len" :  tf.FixedLenFeature((), tf.int64),
               "labels": tf.VarLenFeature(tf.int64)}
   
   parsed_features = tf.parse_single_example(proto, features)
   
   sparse_audio = parsed_features["audio"]
+  
+  seq_len = tf.cast(parsed_features['seq_len'], tf.int32)
+  
   shape = tf.cast(parsed_features["audio_shape"], tf.int32)
 
   dense_audio = tf.reshape(tf.sparse_to_dense(sparse_audio.indices,
@@ -42,12 +46,28 @@ def parse_tfrecord_example(proto):
   dense_trans = tf.sparse_to_dense(sparse_trans.indices,
                                    sparse_trans.dense_shape,
                                    sparse_trans.values)
+  
+  
+  batch = {'audio' : dense_audio, 'seq_len' : seq_len, 'labels' : tf.cast(dense_trans, tf.int32) }
+  
+  return batch 
 
-  #features = {'audio' : dense_audio, 'shape' : shape, 'labels' : dense_trans}
 
-  return dense_audio, shape, tf.cast(dense_trans, tf.int32)
-#return features, sparse_trans #
-   
+def expand(x):
+  '''
+  Hack. Because padded_batch doesn't play nice with scalres, so we expand the scalar  to a vector of length 1
+  :param x:
+  :return:
+  '''
+  x['seq_len'] = tf.expand_dims(x['seq_len'],0)
+  return x 
+
+def deflate(x):
+  '''
+  Undo Hack. We undo the expansion we did in expand
+  '''
+  x['seq_len'] = tf.squeeze(x['seq_len'])
+  return x
 
 
 def model_input_func_tfr(tfrecord_path, split, shuffle, batch_size):
@@ -70,15 +90,19 @@ def model_input_func_tfr(tfrecord_path, split, shuffle, batch_size):
   
   dataset = dataset.shuffle(buffer_size=shuffle)
   
+  dataset = dataset.map(expand)
+    
   if split == 'train':
     
     dataset = dataset.repeat()
         
-  dataset = dataset.padded_batch(batch_size, padded_shapes= ([257,-1],[2],[-1]))
+  dataset = dataset.padded_batch(batch_size, padded_shapes= {"audio" : [257,-1], "seq_len" : 1, "labels" : [-1]},
+                                             padding_values = {'audio' : 0. , 'seq_len' : 1,'labels' : -1})
+  dataset = dataset.map(deflate)
+      
+  features = dataset.make_one_shot_iterator().get_next()
   
-  audio,shape,labels = dataset.make_one_shot_iterator().get_next()
-  
-  features = {'audio' : audio, 'shape' : shape}
+  labels = features.pop('labels')
       
   return features, labels
 
@@ -86,19 +110,17 @@ def model_input_func_tfr(tfrecord_path, split, shuffle, batch_size):
 if __name__ == "__main__":
   
   next_element = model_input_func_tfr('./test/librispeech_tfrecords.dev', shuffle = 10,
-                                   split = 'dev', batch_size = 1)
+                                   split = 'dev', batch_size = 5)
   
   max_len = 0
   max_trans = 0
   with tf.Session() as sess:
     for i in range(102):
       try:
-	    
-        audio,shape,batch_y = sess.run(next_element)
-       # if batch_x[0].shape[1] > max_len:
-       #   max_len = batch_x[0].shape[1]
-       # if batch_y[0].shape[0] > max_trans:
-       #   max_trans = batch_y[0].shape[0]
+        features,batch_y = sess.run(next_element)
+        print(features['seq_len'])
+        print(features['audio'])
+        print(batch_y)
       except tf.errors.OutOfRangeError:
         print("End of dataset")
         print("Max len : {}".format(max_len))
