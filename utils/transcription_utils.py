@@ -14,7 +14,16 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
 
 
-def get_char_encoding(file_path):
+def decoder_dict(char2idx):
+  
+  return {idx : char for char,idx in char2idx.items()}
+
+
+def decode_sequence(seq, idx2char):
+  
+  return [idx2char.get(c) for c in seq]
+
+def load_pickle(file_path):
   
   file_path = str(Path(file_path))
   
@@ -23,7 +32,7 @@ def get_char_encoding(file_path):
   return item
 
 
-def save_char_encoding(char_enc, path):
+def save_pickle(char_enc, path, file_name):
   """
   Util funciton to save in pickle format character lookup.
   
@@ -32,7 +41,7 @@ def save_char_encoding(char_enc, path):
     path (str) : path where to store item
   """
   
-  path = str(Path(path).joinpath('vocab.pkl'))
+  path = str(Path(path).joinpath(file_name))
   
   pickle.dump( char_enc, open( path, 'wb'))
   

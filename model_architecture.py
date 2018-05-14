@@ -38,7 +38,7 @@ def gated_conv(inputs,filters, kernel_size, strides, activation,padding, data_fo
     c_2 = tf.layers.conv1d(inputs = inputs, filters=filters, kernel_size = kernel_size, strides = strides, activation = activation,
                          padding = padding, data_format = data_format, name = 'conv2')
     
-    conv = tf.matul(c_1, tf.nn.sigmoid(c_2))
+    conv = tf.matmul(c_1, tf.nn.sigmoid(c_2))
   
   return conv
   
@@ -123,20 +123,19 @@ def teacher_model_function(features, labels, mode, params):
         - widths (list) : sequence of kernel sizes
         - strides (list) : sequence of strides
       
-      - 
+  :return:
+    specification (tf.estimator.EstimatorSpec)
   """
-
-  audio_features = features['audio']
   
-  seqs_len = length(features['audio'])
+  seqs_len = length(features, data_format = params.get('data_format'))
   
   if params.get('data_format') == "channels_last":
     
-    audio_features = tf.transpose(audio_features, (0, 2, 1))
+    features = tf.transpose(features, (0, 2, 1))
     
   with tf.variable_scope("model"):
     
-    pre_out = convolutional_sequence(inputs = audio_features, conv_type = params.get('conv_type'),
+    pre_out = convolutional_sequence(inputs = features, conv_type = params.get('conv_type'),
                             filters = params.get('filters'),
                             widths = params.get('widths'),
                             strides = params.get('strides'),
@@ -206,8 +205,127 @@ def teacher_model_function(features, labels, mode, params):
   metrics = {"ler": (mean_ler, op)}
   
   return tf.estimator.EstimatorSpec(mode=mode, loss = loss, eval_metric_ops=metrics)
+
+
+
+
+def student_model_function(features, labels, mode, params):
+  """
+  Teacher model function. Train, predict, evaluate model.
   
+  :param:
+    features (tf.Tensor) : 3D input features
+    labels (tf.Tensor) : 2D labels
+    mode (str) : Choices (`train`,`eval`,`predict`)
+    params (dict) : Parameter for the model. Should contain following keys:
+      
+      - data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels)
+      - activation (tf function) : activation function
+      - vocab_size (int) : possible output charachters
+      - teacher (nested dict):
+        - filters (list) : sequence of filters
+        - widths (list) : sequence of kernel sizes
+        - strides (list) : sequence of strides
+      
+  :return:
+    specification (tf.estimator.EstimatorSpec)
+  """
+  
+  audio_features = features['audio']
+  
+  teacher_logits = features['logits']
+  
+  seqs_len = length(features, data_format = params.get('data_format'))
+  
+  if params.get('data_format') == "channels_last":
     
+    features = tf.transpose(features, (0, 2, 1))
+    
+  with tf.variable_scope("model"):
+    
+    pre_out = convolutional_sequence(inputs = audio_features, conv_type = params.get('conv_type'),
+                            filters = params.get('filters'),
+                            widths = params.get('widths'),
+                            strides = params.get('strides'),
+                            activation = params.get('activation'),
+                            data_format = params.get('data_format'),
+                            train = mode == tf.estimator.ModeKeys.TRAIN)
+    
+    logits = tf.layers.conv1d(inputs = pre_out, filters = params.get('vocab_size'), kernel_size = 1,
+                                  strides= 1, activation=None,
+                                  padding="same", data_format=params.get('data_format'),name="logits")
+    
+       
+    # get logits in time major : [max_time, batch_size, num_classes]
+    if params.get('data_format') == 'channels_first':
+      logits = tf.transpose(logits, (2,0,1))
+      
+    elif params.get('data_format') == 'channels_last':
+      logits = tf.transpose(logits, (1,0,2))
+      
+  
+  if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
+    
+    with tf.name_scope("predictions"):
+      
+      sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder (logits, seqs_len)
+  
+  if mode == tf.estimator.ModeKeys.PREDICT:
+        
+    with tf.name_scope('predictions'):
+          
+      sparse_decoded = sparse_decoded[0]
+      
+      dense_decoded = tf.sparse_to_dense(sparse_decoded.indices,
+                                              sparse_decoded.dense_shape,
+                                              sparse_decoded.values)
+  
+      
+      pred = {'decoding' : dense_decoded, 'log_prob' : log_prob}
+      
+    return tf.estimator.EstimatorSpec(mode = mode, predictions=pred)
+  
+  with tf.name_scope('loss'):
+    
+    with tf.variable_scope('ctc_loss'):
+    
+      sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
+      
+      batches_ctc_loss = tf.nn.ctc_loss(labels = sparse_labels,
+                                        inputs =  logits, 
+                                        sequence_length = seqs_len)
+      ctc_loss = tf.reduce_mean(batches_ctc_loss)
+      tf.summary.scalar('ctc_loss',ctc_loss)
+      
+    with tf.variable_scope('distillation_loss'):
+      
+      soft_targets = tf.nn.softmax(teacher_logits/params.get('temperature'))
+      
+      xent_soft_targets = tf.reduce_mean( - tf.reduce_sum(soft_targets * tf.log(logits), reduction_indices=1))
+      
+      tf.summary('soft_target_xent', xent_soft_targets)
+      
+      
+    loss = ctc_loss + (0.5 * xent_soft_targets)
+  
+ 
+  if mode == tf.estimator.ModeKeys.TRAIN:
+        
+    with tf.variable_scope("optimizer"):
+      train_step = tf.train.AdamOptimizer().minimize(loss,
+                                                      global_step=tf.train.get_global_step())
+      
+    return tf.estimator.EstimatorSpec(mode=mode, loss=loss,train_op=train_step) 
+  
+  
+  assert mode == tf.estimator.ModeKeys.EVAL
+
+  ler = tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels)
+  mean_ler, op = tf.metrics.mean(ler)
+  
+  metrics = {"ler": (mean_ler, op)}
+  
+  return tf.estimator.EstimatorSpec(mode=mode, loss = loss, eval_metric_ops=metrics)
             
     
     

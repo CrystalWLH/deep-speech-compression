@@ -13,6 +13,22 @@ import librosa
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
 
+
+def z_normalization(audio):
+  """
+  Normalize audio signal. Mean 0 std 1
+  
+  :param:
+    audio (np.ndarray) : audio examples
+    
+  :return:
+    
+    normalized audio
+  """
+  
+  
+  return np.mean(audio) / np.std(audio)
+
 def get_duration_in_s(audio, sample_rate):
   """
   Compute audio example duration in seconds.

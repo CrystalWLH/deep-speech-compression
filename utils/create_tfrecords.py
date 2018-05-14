@@ -11,7 +11,7 @@ import logging
 import numpy as np
 import tensorflow as tf
 from pathlib import Path
-from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_char_encoding
+from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_pickle
 from utils.audio_utils import get_audio
 from collections import namedtuple
 
@@ -194,7 +194,6 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, **kwargs 
     
     tfrecord_write_example(writer = writer, audio =  audio, 
                                    audio_shape = audio_shape,labels = labels)
-    
     if (idx)%1000 == 0:
       
       logger.info("Successfully wrote {} tfrecord examples".format(idx))
@@ -223,8 +222,8 @@ if __name__ == "__main__":
     
     raise NotImplementedError("Sorry! ASG loss is not available!")
     
-  save_char_encoding(chars2ids, args.out)
-    
+  save_pickle(chars2ids, args.out, 'vocab.pkl')
+      
   encoded_transcriptions = get_id2encoded_transcriptions(ids2trans, chars2ids)
   
   split_data = load_data_by_split(data_path = args.data, split = args.split,
