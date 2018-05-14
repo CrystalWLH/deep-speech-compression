@@ -77,7 +77,7 @@ def create_tfrecords_folder(out_path):
   return out_path
     
 
-def tfrecord_write_example(writer,audio, audio_shape,seq_len, labels):
+def tfrecord_write_example(writer,audio, audio_shape, labels):
   """
   Write example to TFRecordWriter.
   
@@ -91,7 +91,6 @@ def tfrecord_write_example(writer,audio, audio_shape,seq_len, labels):
   example = tf.train.Example( features=tf.train.Features(
       feature={'audio': _float_feature(audio),
                'audio_shape' : _int64_feature(audio_shape),
-               'seq_len' : _int64_feature([seq_len]),
                'labels': _int64_feature(labels),
               }))
   
@@ -190,13 +189,11 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, **kwargs 
       audio = audio[np.newaxis,:]
     
     audio_shape = list(audio.shape)
-    
-    seq_len = audio_shape[1]
-        
+            
     audio = audio.flatten()
     
     tfrecord_write_example(writer = writer, audio =  audio, 
-                                   audio_shape = audio_shape,seq_len = seq_len,labels = labels)
+                                   audio_shape = audio_shape,labels = labels)
     
     if (idx)%1000 == 0:
       

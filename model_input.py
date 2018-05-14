@@ -7,7 +7,8 @@ Created on Sun May  6 15:53:15 2018
 """
 
 #TODO
-# EVAL AND PREDICT NOT WORKING! FFS 
+# EVAL AND PREDICT NOT WORKING! FFS
+# REMOVE DEFLATE? CTC DECODER RAISES sequence_length is not a vector 
 
 import tensorflow as tf
 
@@ -27,15 +28,12 @@ def parse_tfrecord_example(proto):
   
   features = {"audio": tf.VarLenFeature(tf.float32),
               "audio_shape": tf.FixedLenFeature((2,), tf.int64),
-              "seq_len" :  tf.FixedLenFeature((), tf.int64),
               "labels": tf.VarLenFeature(tf.int64)}
   
   parsed_features = tf.parse_single_example(proto, features)
   
   sparse_audio = parsed_features["audio"]
-  
-  seq_len = tf.cast(parsed_features['seq_len'], tf.int32)
-  
+    
   shape = tf.cast(parsed_features["audio_shape"], tf.int32)
 
   dense_audio = tf.reshape(tf.sparse_to_dense(sparse_audio.indices,
@@ -48,29 +46,13 @@ def parse_tfrecord_example(proto):
                                    sparse_trans.values)
   
   
-  batch = {'audio' : dense_audio, 'seq_len' : seq_len, 'labels' : tf.cast(dense_trans, tf.int32) }
+  batch = {'audio' : dense_audio, 'labels' : tf.cast(dense_trans, tf.int32) }
   
   return batch 
 
 
-def expand(x):
-  '''
-  Hack. Because padded_batch doesn't play nice with scalres, so we expand the scalar  to a vector of length 1
-  :param x:
-  :return:
-  '''
-  x['seq_len'] = tf.expand_dims(x['seq_len'],0)
-  return x 
 
-def deflate(x):
-  '''
-  Undo Hack. We undo the expansion we did in expand
-  '''
-  x['seq_len'] = tf.squeeze(x['seq_len'])
-  return x
-
-
-def model_input_func_tfr(tfrecord_path, split, shuffle, batch_size):
+def teacher_input_func(tfrecord_path, split, shuffle, batch_size):
   """
   Create dataset instance from tfrecord file. It prefetches mini-batch. If is train split dataset is repeated.
   
@@ -89,16 +71,13 @@ def model_input_func_tfr(tfrecord_path, split, shuffle, batch_size):
   dataset = dataset.map(parse_tfrecord_example)
   
   dataset = dataset.shuffle(buffer_size=shuffle)
-  
-  dataset = dataset.map(expand)
-    
+      
   if split == 'train':
     
     dataset = dataset.repeat()
         
-  dataset = dataset.padded_batch(batch_size, padded_shapes= {"audio" : [257,-1], "seq_len" : 1, "labels" : [-1]},
-                                             padding_values = {'audio' : 0. , 'seq_len' : 1,'labels' : -1})
-  dataset = dataset.map(deflate)
+  dataset = dataset.padded_batch(batch_size, padded_shapes= {"audio" : [257,-1], "labels" : [-1]},
+                                             padding_values = {'audio' : 0. ,'labels' : -1})
       
   features = dataset.make_one_shot_iterator().get_next()
   
@@ -109,14 +88,14 @@ def model_input_func_tfr(tfrecord_path, split, shuffle, batch_size):
 
 if __name__ == "__main__":
   
-  next_element = model_input_func_tfr('./test/librispeech_tfrecords.dev', shuffle = 10,
+  next_element = teacher_input_func('./test/librispeech_tfrecords.dev', shuffle = 10,
                                    split = 'dev', batch_size = 5)
-  
   max_len = 0
   max_trans = 0
   with tf.Session() as sess:
-    for i in range(102):
+    for i in range(10):
       try:
+        print(next_element)
         features,batch_y = sess.run(next_element)
         print(features['seq_len'])
         print(features['audio'])

@@ -13,14 +13,30 @@ import tensorflow as tf
 
 
 def gated_conv(inputs,filters, kernel_size, strides, activation,padding, data_format,name):
+  """
+  Gated convolution: Elementwise product of 1D convolved features with sigmoid activated second 1D convolution. 
+  :math:`h^{i}(X) = (X * W^{i} + b^{i}) \otimes \sigma(X * V^{i} + c^{i})`
   
-  with tf.variable_scope('gated_conv_' + name):
+  :param:
+    inputs (tf.Tensor) : 3D input features
+    filters (int) : number of output filters
+    kernel_size (int) : kernel width
+    strides (int) : stride
+    padding (str) : type of padding
+    data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels)
+    name (str) : operation name in graph
+    
+  :return:
+    conv (tf.Tensor) : result of gated convolution operation
+  """
+  
+  with tf.variable_scope(name):
   
     c_1 = tf.layers.conv1d(inputs = inputs, filters=filters, kernel_size= kernel_size, strides = strides, activation = activation,
-                         padding = padding, data_format = data_format)
+                         padding = padding, data_format = data_format,name = 'conv1' )
     
     c_2 = tf.layers.conv1d(inputs = inputs, filters=filters, kernel_size = kernel_size, strides = strides, activation = activation,
-                         padding = padding, data_format = data_format)
+                         padding = padding, data_format = data_format, name = 'conv2')
     
     conv = tf.matul(c_1, tf.nn.sigmoid(c_2))
   
@@ -28,6 +44,23 @@ def gated_conv(inputs,filters, kernel_size, strides, activation,padding, data_fo
   
   
 def convolutional_sequence(conv_type, inputs, filters, widths, strides, activation, data_format, train):
+  """
+  Apply sequence of 1D convolution operation.
+  
+  :param:
+    conv_type (str) : type of convolution. Either `gated_conv` or `conv`
+    inputs (tf.Tensor) : 3D input features
+    filters (list) : sequence of filters
+    widths (list) : sequence of kernel sizes
+    strides (list) : sequence of strides
+    activation (tf function) : activation function
+    data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels) 
+    train (bool) : wheter in train mode or not
+    
+  :return:
+    pre_out (tf.Tensor) : result of sequence of convolutions
+    
+  """
   
   conv_op = gated_conv if conv_type == 'gated_conv' else tf.layers.conv1d
   
@@ -39,7 +72,7 @@ def convolutional_sequence(conv_type, inputs, filters, widths, strides, activati
       conv = conv_op(inputs = prev_layer,filters = filters[layer],
                      kernel_size = widths[layer], strides = strides[layer],
                      activation = activation,padding = 'same',
-                     data_format = data_format, name = 'conv')
+                     data_format = data_format, name = conv_type)
       
       prev_layer = conv
       
@@ -47,27 +80,66 @@ def convolutional_sequence(conv_type, inputs, filters, widths, strides, activati
       
   return prev_layer
 
+def length(batch, data_format):
+  """
+  Get length of sequences in a batch. Expects inputs in `channels_last` format (batch, max_length, channels). If `channels_first` 
+  batch is transposed.
+  
+  :param:
+    batch (tf.Tensor) : 3D input features 
+    data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels) 
+    
+  :return:
+    length (tf.Tensor) : 1D vector of sequence lengths
+  """
+  
+  with tf.variable_scope("sequence_lengths"):
+  
+    if data_format == 'channels_first':
+      batch = tf.transpose(batch, (0,2,1))
+      
+    used = tf.sign(tf.reduce_max(tf.abs(batch), 2))
+    length = tf.reduce_sum(used, 1)
+    length = tf.cast(length, tf.int32)
+    
+  return length
 
 
 def teacher_model_function(features, labels, mode, params):
+  """
+  Teacher model function. Train, predict, evaluate model.
+  
+  :param:
+    features (tf.Tensor) : 3D input features
+    labels (tf.Tensor) : 2D labels
+    mode (str) : Choices (`train`,`eval`,`predict`)
+    params (dict) : Parameter for the model. Should contain following keys:
+      
+      - data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels)
+      - activation (tf function) : activation function
+      - vocab_size (int) : possible output charachters
+      - teacher (nested dict):
+        - filters (list) : sequence of filters
+        - widths (list) : sequence of kernel sizes
+        - strides (list) : sequence of strides
+      
+      - 
+  """
 
   audio_features = features['audio']
   
-  seqs_len = features['seq_len']
+  seqs_len = length(features['audio'])
   
-  sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
-      
   if params.get('data_format') == "channels_last":
     
-    audio_features = tf.transpose(audio_features, [0, 2, 1])
+    audio_features = tf.transpose(audio_features, (0, 2, 1))
     
-      
   with tf.variable_scope("model"):
     
     pre_out = convolutional_sequence(inputs = audio_features, conv_type = params.get('conv_type'),
-                            filters = params.get('teacher').get('filters'),
-                            widths = params.get('teacher').get('widths'),
-                            strides = params.get('teacher').get('strides'),
+                            filters = params.get('filters'),
+                            widths = params.get('widths'),
+                            strides = params.get('strides'),
                             activation = params.get('activation'),
                             data_format = params.get('data_format'),
                             train = mode == tf.estimator.ModeKeys.TRAIN)
@@ -76,42 +148,49 @@ def teacher_model_function(features, labels, mode, params):
                                   strides= 1, activation=None,
                                   padding="same", data_format=params.get('data_format'),name="logits")
     
-    
-        # get logits in time major : [max_time, batch_size, num_classes]
+       
+    # get logits in time major : [max_time, batch_size, num_classes]
     if params.get('data_format') == 'channels_first':
       logits = tf.transpose(logits, (2,0,1))
       
     elif params.get('data_format') == 'channels_last':
       logits = tf.transpose(logits, (1,0,2))
       
-    
-  with tf.name_scope('predictions'):
-    
-    sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
-
-  if mode == tf.estimator.ModeKeys.PREDICT:
-    
-    print("I am here in Predict")
-    
-    predictions = {'decoding' : sparse_decoded, 'log_prob' : log_prob}
-      
-    return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
   
+  if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
+    
+    with tf.name_scope("predictions"):
+      
+      sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder (logits, seqs_len)
+  
+  if mode == tf.estimator.ModeKeys.PREDICT:
+        
+    with tf.name_scope('predictions'):
+          
+      sparse_decoded = sparse_decoded[0]
+      
+      dense_decoded = tf.sparse_to_dense(sparse_decoded.indices,
+                                              sparse_decoded.dense_shape,
+                                              sparse_decoded.values)
+  
+      
+      pred = {'decoding' : dense_decoded, 'log_prob' : log_prob, 'logits' : logits}
+      
+    return tf.estimator.EstimatorSpec(mode = mode, predictions=pred)
   
   with tf.name_scope('loss'):
+    
+    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
     
     batches_ctc_loss = tf.nn.ctc_loss(labels = sparse_labels,
                                       inputs =  logits, 
                                       sequence_length = seqs_len)
     loss = tf.reduce_mean(batches_ctc_loss)
     tf.summary.scalar('ctc_loss',loss)
-
-    
+  
+ 
   if mode == tf.estimator.ModeKeys.TRAIN:
-    
-    print("I am here in Train")
-    
-      
+        
     with tf.variable_scope("optimizer"):
       train_step = tf.train.AdamOptimizer().minimize(loss,
                                                       global_step=tf.train.get_global_step())
@@ -119,18 +198,14 @@ def teacher_model_function(features, labels, mode, params):
     return tf.estimator.EstimatorSpec(mode=mode, loss=loss,train_op=train_step) 
   
   
-  assert mode == tf.estimator.ModeKeys.EVAL, "Wrong mode"
+  assert mode == tf.estimator.ModeKeys.EVAL
 
-  print("Evaluating")
-
-   
-  
   ler = tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels)
   mean_ler, op = tf.metrics.mean(ler)
   
   metrics = {"ler": (mean_ler, op)}
   
-  return tf.estimator.EstimatorSpec(mode=mode, loss=loss, eval_metric_ops=metrics)
+  return tf.estimator.EstimatorSpec(mode=mode, loss = loss, eval_metric_ops=metrics)
   
     
             
