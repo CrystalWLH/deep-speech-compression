@@ -118,10 +118,9 @@ def teacher_model_function(features, labels, mode, params):
       - data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels)
       - activation (tf function) : activation function
       - vocab_size (int) : possible output charachters
-      - teacher (nested dict):
-        - filters (list) : sequence of filters
-        - widths (list) : sequence of kernel sizes
-        - strides (list) : sequence of strides
+      - filters (list) : sequence of filters
+      - widths (list) : sequence of kernel sizes
+      - strides (list) : sequence of strides
       
   :return:
     specification (tf.estimator.EstimatorSpec)
@@ -224,10 +223,9 @@ def student_model_function(features, labels, mode, params):
       - data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels)
       - activation (tf function) : activation function
       - vocab_size (int) : possible output charachters
-      - teacher (nested dict):
-        - filters (list) : sequence of filters
-        - widths (list) : sequence of kernel sizes
-        - strides (list) : sequence of strides
+      - filters (list) : sequence of filters
+      - widths (list) : sequence of kernel sizes
+      - strides (list) : sequence of strides
       
   :return:
     specification (tf.estimator.EstimatorSpec)
@@ -239,8 +237,6 @@ def student_model_function(features, labels, mode, params):
   
     teacher_logits = tf.transpose(features['logits'],(1,0,2))
     
-    print(teacher_logits)
-  
   with tf.variable_scope('data_format'):
     
     if params.get('data_format') == "channels_last":
@@ -248,7 +244,7 @@ def student_model_function(features, labels, mode, params):
       audio_features = tf.transpose(audio_features, (0, 2, 1))
       
   seqs_len = length(audio_features, data_format = params.get('data_format'))
-    
+        
   with tf.variable_scope("model"):
     
     pre_out = convolutional_sequence(inputs = audio_features, conv_type = params.get('conv_type'),
@@ -257,23 +253,23 @@ def student_model_function(features, labels, mode, params):
                             strides = params.get('strides'),
                             activation = params.get('activation'),
                             data_format = params.get('data_format'),
-                            train = mode == tf.estimator.ModeKeys.TRAIN)
+                            train =  True)
     
     logits = tf.layers.conv1d(inputs = pre_out, filters = params.get('vocab_size'), kernel_size = 1,
                                   strides= 1, activation=None,
                                   padding="same", data_format=params.get('data_format'),name="logits")
     
-       
-    # get logits in time major : [max_time, batch_size, num_classes]
+    
     if params.get('data_format') == 'channels_first':
-      logits = tf.transpose(logits, (2,0,1))
-      
+      trans_logits = tf.transpose(logits, (2,0,1))
+        
     elif params.get('data_format') == 'channels_last':
-      logits = tf.transpose(logits, (1,0,2))
-      
-  print(logits)
+      trans_logits = tf.transpose(logits, (1,0,2))
   
-  assert tf.shape(logits) == tf.shape(teacher_logits)
+  student_logits_shape = tf.shape(trans_logits)
+  teacher_logits_shape = tf.shape(teacher_logits)
+  
+  tf.assert_equal(student_logits_shape,teacher_logits_shape)
         
   if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
     
@@ -310,6 +306,7 @@ def student_model_function(features, labels, mode, params):
       
     with tf.variable_scope('distillation_loss'):
       
+      # add softmax on right axis?
       soft_targets = teacher_logits/params.get('temperature')
       
       logits_fl = tf.reshape(logits, [tf.shape(logits)[1],-1])
