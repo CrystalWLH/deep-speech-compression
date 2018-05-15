@@ -42,21 +42,26 @@ def config2params(config):
   map_act = {'relu' : tf.nn.relu, 'elu' : tf.nn.elu}
   
   env_params = {}
-  env_params['save_model'] = configuration['GENERAL'].get('save_model','models')
+  params = {}
+  
   env_params['model_type'] = configuration['GENERAL'].get('model_type','teacher')
+  env_params['save_model'] = configuration['GENERAL'].get('save_model','models')
   env_params['steps'] = configuration['TRAIN'].getint('steps', 10)
   env_params['char2idx'] = load_pickle(configuration['GENERAL'].get('vocab_path','./test/vocab.pkl'))
   env_params['input_channels'] = configuration['GENERAL'].getint('input_channels', None)
   env_params['batch_size'] = configuration['TRAIN'].getint('batch_size', 512)
-  env_params['teacher_config'] = configuration['GENERAL'].get('teacher_config')
-  env_params['teacher_dir'] = configuration['GENERAL'].get('teacher_dir')
   
   if not env_params['input_channels']:
     logger.warning("Number of input channels is not specified! Please provide this field")
   
-  params = {}
-  
   model_type = 'TEACHER' if env_params.get('model_type') == 'teacher' else 'STUDENT'
+  
+  if model_type == 'STUDENT':
+  
+    env_params['teacher_config'] = configuration['GENERAL'].get('teacher_config')
+    env_params['teacher_dir'] = configuration['GENERAL'].get('teacher_dir')
+    params['temperature'] = configuration['TRAIN'].getint('temperature', 3)
+  
     
   params['filters'] = json.loads(configuration[model_type].get('filters', [250,250]))
   params['widths'] = json.loads(configuration[model_type].get('widths', [7,7]))
@@ -65,13 +70,11 @@ def config2params(config):
   
   params['vocab_size'] = len(env_params.get('char2idx'))
   params['data_format'] = configuration['GENERAL'].get('data_format','channels_last')
-  params['input_type'] = configuration['GENERAL'].get('input_type','ampl')
   params['conv_type'] = configuration['GENERAL'].get('conv_type','conv')
   params['data_path'] = configuration['GENERAL'].get('data_path','./test')
-  
   params['activation'] = map_act.get(configuration['TRAIN'].get('activation','relu'), 'relu')
   params['bn'] = configuration['TRAIN'].getboolean('bn', False)
-  params['temperature'] = configuration['TRAIN'].getint('temperature', 3)
+  
   
   return env_params,params
 
@@ -95,7 +98,7 @@ if __name__ == '__main__':
         return teacher_input_func(tfrecord_path = './test/librispeech_tfrecords.dev',
                                   input_channels = env_params.get('input_channels'),
                                   mode = 'train',
-                                  batch_size = 5 ) #env_params.get('batch_size')
+                                  batch_size = 2 ) #env_params.get('batch_size')
                                   
 
       estimator.train(input_fn= input_fn,steps= env_params.get('steps'))
@@ -128,6 +131,8 @@ if __name__ == '__main__':
           
   elif env_params.get('model_type') == 'student':
     
+    env_teacher,params_teacher = config2params(env_params.get('teacher_config'))
+    
     
     estimator = tf.estimator.Estimator(model_fn=student_model_function, params=params,
                                        model_dir= env_params.get('save_model'),config=config)
@@ -141,7 +146,7 @@ if __name__ == '__main__':
                                   mode = 'train',
                                   batch_size = 5, #env_params.get('batch_size')
                                   teacher_model_function = teacher_model_function,
-                                  params_teacher = config2params(env_params.get('teacher_configs')[1]),
+                                  params_teacher = params_teacher,
                                   model_dir = env_params.get('teacher_dir'))
         
       estimator.train(input_fn= input_fn,steps= env_params.get('steps'))

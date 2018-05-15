@@ -94,14 +94,14 @@ def length(batch, data_format):
   """
   
   with tf.variable_scope("sequence_lengths"):
-  
+    
     if data_format == 'channels_first':
       batch = tf.transpose(batch, (0,2,1))
       
     used = tf.sign(tf.reduce_max(tf.abs(batch), 2))
     length = tf.reduce_sum(used, 1)
     length = tf.cast(length, tf.int32)
-    
+          
   return length
 
 
@@ -127,11 +127,13 @@ def teacher_model_function(features, labels, mode, params):
     specification (tf.estimator.EstimatorSpec)
   """
   
-  seqs_len = length(features, data_format = params.get('data_format'))
+  with tf.variable_scope("data_format"):
   
-  if params.get('data_format') == "channels_last":
-    
-    features = tf.transpose(features, (0, 2, 1))
+    if params.get('data_format') == "channels_last":
+      
+      features = tf.transpose(features, (0, 2, 1))
+      
+  seqs_len = length(features, data_format = params.get('data_format'))
     
   with tf.variable_scope("model"):
     
@@ -154,13 +156,12 @@ def teacher_model_function(features, labels, mode, params):
       
     elif params.get('data_format') == 'channels_last':
       logits = tf.transpose(logits, (1,0,2))
-      
   
   if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
     
     with tf.name_scope("predictions"):
       
-      sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder (logits, seqs_len)
+      sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
   
   if mode == tf.estimator.ModeKeys.PREDICT:
         
@@ -176,7 +177,8 @@ def teacher_model_function(features, labels, mode, params):
       pred = {'decoding' : dense_decoded, 'log_prob' : log_prob, 'logits' : logits}
       
     return tf.estimator.EstimatorSpec(mode = mode, predictions=pred)
-  
+      
+
   with tf.name_scope('loss'):
     
     sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
@@ -230,16 +232,22 @@ def student_model_function(features, labels, mode, params):
   :return:
     specification (tf.estimator.EstimatorSpec)
   """
-  
+      
   audio_features = features['audio']
   
-  teacher_logits = features['logits']
+  with tf.variable_scope('teacher_logits'):
   
-  seqs_len = length(features, data_format = params.get('data_format'))
-  
-  if params.get('data_format') == "channels_last":
+    teacher_logits = tf.transpose(features['logits'],(1,0,2))
     
-    features = tf.transpose(features, (0, 2, 1))
+    print(teacher_logits)
+  
+  with tf.variable_scope('data_format'):
+    
+    if params.get('data_format') == "channels_last":
+      
+      audio_features = tf.transpose(audio_features, (0, 2, 1))
+      
+  seqs_len = length(audio_features, data_format = params.get('data_format'))
     
   with tf.variable_scope("model"):
     
@@ -263,7 +271,10 @@ def student_model_function(features, labels, mode, params):
     elif params.get('data_format') == 'channels_last':
       logits = tf.transpose(logits, (1,0,2))
       
+  print(logits)
   
+  assert tf.shape(logits) == tf.shape(teacher_logits)
+        
   if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
     
     with tf.name_scope("predictions"):
@@ -299,14 +310,17 @@ def student_model_function(features, labels, mode, params):
       
     with tf.variable_scope('distillation_loss'):
       
-      soft_targets = tf.nn.softmax(teacher_logits/params.get('temperature'))
+      soft_targets = teacher_logits/params.get('temperature')
       
-      xent_soft_targets = tf.reduce_mean( - tf.reduce_sum(soft_targets * tf.log(logits), reduction_indices=1))
+      logits_fl = tf.reshape(logits, [tf.shape(logits)[1],-1])
+      st_fl = tf.reshape(soft_targets,[tf.shape(logits)[1],-1])
+                  
+      xent_soft_targets = tf.reduce_mean(-tf.reduce_sum(st_fl * tf.log(logits_fl), axis=1))
       
-      tf.summary('soft_target_xent', xent_soft_targets)
+      tf.summary.scalar('soft_target_xent', xent_soft_targets)
       
       
-    loss = ctc_loss + (0.5 * xent_soft_targets)
+    loss = ctc_loss +  xent_soft_targets
   
  
   if mode == tf.estimator.ModeKeys.TRAIN:

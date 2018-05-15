@@ -9,9 +9,10 @@ Created on Sun May  6 15:53:15 2018
 #TODO
 # FIX BUFFER SIZE FOR SHUFFLE
 
+import numpy as np
 import tensorflow as tf
 
-def load_teacher_logits(tfrecord_path_train,teacher_model_function, params_teacher, model_dir):
+def load_teacher_logits(tfrecord_path_train,teacher_model_function,input_channels,params_teacher, model_dir):
   """
   Create dataset with containing teacher logits.
   
@@ -26,7 +27,8 @@ def load_teacher_logits(tfrecord_path_train,teacher_model_function, params_teach
   """
   
   def input_fn():
-    return teacher_input_func(tfrecord_path = tfrecord_path_train,mode = 'predict', batch_size = 2)
+    return teacher_input_func(tfrecord_path = tfrecord_path_train, mode = 'predict',
+                              input_channels = input_channels,batch_size = 1)
 
   
   estimator = tf.estimator.Estimator(model_fn=teacher_model_function, params=params_teacher,
@@ -34,8 +36,7 @@ def load_teacher_logits(tfrecord_path_train,teacher_model_function, params_teach
   
   def gen_logits():
     for batch_pred in estimator.predict(input_fn=input_fn, yield_single_examples = False):
-      for idx in range(batch_pred['logits'].shape[1]):
-        yield batch_pred['logits'][:,idx,:]
+      yield np.squeeze(batch_pred['logits'])
           
   dataset_logits = tf.data.Dataset.from_generator(gen_logits, (tf.float32))
     
@@ -58,20 +59,28 @@ def student_input_func(tfrecord_path,vocab_size,input_channels,
     
   """
   
-  dataset_std = load_dataset(tfrecord_path)
+  with tf.variable_scope('input'):
   
-  dataset_logits = load_teacher_logits(tfrecord_path,teacher_model_function, params_teacher, model_dir)
-  
-  dataset = tf.data.Dataset.zip((dataset_std, dataset_logits))
-  
-  if mode == 'train':
+    dataset_std = load_dataset(tfrecord_path)
     
-    dataset = dataset.repeat()
-        
-  dataset = dataset.padded_batch(batch_size, padded_shapes= (([input_channels,-1], [-1]), [-1,vocab_size]),
-                                             padding_values = ( ( 0. , -1), 1. ))
+    dataset_logits = load_teacher_logits(tfrecord_path,teacher_model_function,
+                                         input_channels, params_teacher, model_dir)
+    
+    dataset = tf.data.Dataset.zip((dataset_std, dataset_logits))
+    
+    if mode == 'train':
+      
+      dataset = dataset.repeat()
+          
+    dataset = dataset.padded_batch(batch_size, padded_shapes= (([input_channels,-1], [-1]), [-1,vocab_size]),
+                                               padding_values = ( ( 0. , -1), 0. ))
+    
+    (audio,labels), logits = dataset.make_one_shot_iterator().get_next()
+    
+    
+    features = {'audio' : audio, 'logits' : logits}
   
-  return dataset
+  return features, labels
   
   
 def load_dataset(tfrecord_path):
@@ -143,18 +152,17 @@ def teacher_input_func(tfrecord_path,input_channels, mode, batch_size):
     minibatch (batch_features,batch_labels) : minibatch (features, labels)
   """
   
-  dataset = load_dataset(tfrecord_path)  
-      
-  if mode == 'train':
-    
-    dataset = dataset.repeat()
+  with tf.variable_scope('input'):
+    dataset = load_dataset(tfrecord_path)  
         
-  dataset = dataset.padded_batch(batch_size, padded_shapes= ([input_channels,-1],[-1]),
-                                             padding_values =  (0.,-1))
-  
-  print(dataset.output_shapes)
+    if mode == 'train':
       
-  features,labels = dataset.make_one_shot_iterator().get_next()
+      dataset = dataset.repeat()
+          
+    dataset = dataset.padded_batch(batch_size, padded_shapes= ([input_channels,-1],[-1]),
+                                               padding_values =  (0.,-1))
+          
+    features,labels = dataset.make_one_shot_iterator().get_next()
       
   return features, labels
 
