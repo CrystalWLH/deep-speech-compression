@@ -66,6 +66,7 @@ def config2params(config):
   params['filters'] = json.loads(configuration[model_type].get('filters', [250,250]))
   params['widths'] = json.loads(configuration[model_type].get('widths', [7,7]))
   params['strides'] = json.loads(configuration[model_type].get('strides', [1,1]))
+  params['dropouts'] = json.loads(configuration[model_type].get('dropouts', [0,0]))
   
   
   params['vocab_size'] = len(env_params.get('char2idx'))
@@ -74,6 +75,7 @@ def config2params(config):
   params['data_path'] = configuration['GENERAL'].get('data_path','./test')
   params['activation'] = map_act.get(configuration['TRAIN'].get('activation','relu'), 'relu')
   params['bn'] = configuration['TRAIN'].getboolean('bn', False)
+  params['clipping'] = configuration['TRAIN'].getint('clipping', 0)
   
   
   return env_params,params

@@ -8,12 +8,14 @@ Created on Tue May  1 16:54:47 2018
 
 import argparse
 import logging
+import random
 import numpy as np
 import tensorflow as tf
 from pathlib import Path
 from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_pickle
-from utils.audio_utils import get_audio
+from utils.audio_utils import get_audio, load_raw_audio,wave2mfccs
 from collections import namedtuple
+import multiprocessing as mp
 
 #######################################
 # CTC LOSS : LARGEST VALUE 
@@ -29,12 +31,11 @@ def parse_args():
   """
   parser = argparse.ArgumentParser(description='Create tfrecord files from LibriSpeech corpus')
   parser.add_argument('-d', '--data', required=True, type = str, help='Path to unzipped LibriSpeech dataset')
-  parser.add_argument('-s', '--split', required=True, type = str, 
-                      choices = ('train','dev','test'), help='Which dataset split to be parsed')
+  parser.add_argument('-s', '--split', required=True, type = str, choices = ('train','dev','test','dev-other','dev-clean','test-other','test-clean'),
+                      help='Which dataset split to be parsed. Either a split (`train`,`dev`,`test`) or a specific folder e.g. (`dev-other`)')
   parser.add_argument('-o', '--out', required=True, type = str, help='Directory where to store tfrecord files')
-  parser.add_argument('-f', '--format', type = str, default = 'ampl', choices = ('raw','ampl','power','mel'),
-                      help='Representation of the audio to be used: `raw` (wave), `ampl` : amplitude spectrogram,\
-                      `power` : power spectrogram, `mel` : mel spectrogram. Default to `ampl`')
+  parser.add_argument('-f', '--format', type = str, default = 'mfccs', choices = ('raw','power','mfccs'),
+                      help='Representation of the audio to be used: `raw` (wave),`power` : power spectrogram, `mfccs` : MFCCs . Default to `mfccs`')
   parser.add_argument('-l', '--loss' , type = str, default = 'ctc', choices = ('ctc','asg'), 
                       help = 'Specify loss function since affects encoding of characters in transcriptions')
   parser.add_argument('--sr', type = int, default = 16000, help = 'Sample rate with which audios are loaded. Default to : 16000')
@@ -117,7 +118,7 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   
   :param:
     data_path (str) : path to main folder of LibriSpeech corpus
-    split (str) : part of the dataset to load. Choiches = (`train`,`dev`,`test`)
+    split (str) : part of the dataset to load. Either a split (`train`,`dev`,`test`) or a specific folder e.g. (`dev-other`) 
     id2encoded_transc (dict) : dictionary of transcription ids (keys) and the transcription (values) in list of ints format
     limit (int) : when to stop
   :return:
@@ -128,17 +129,15 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
       
   main_path = Path(data_path)
   
-  splits_folders = [child for child in main_path.iterdir() if child.is_dir()]
+  splits_folders = [child for child in main_path.iterdir() if child.is_dir() and child.parts[1].startswith(split)]
   
-  def audio_paths_gen():
-    """
-    Generator of audio paths. Avoid loading all of them into memory
-    """
-    for split_folder in splits_folders:
-      for audio in split_folder.glob('**/*.flac'):
-        yield audio
+  audio_paths = [audio for split_folder in splits_folders for audio in split_folder.glob('**/*.flac')]
   
-  for idx,audio_file in enumerate(audio_paths_gen()):
+  if split.startswith('train'):
+    
+    random.shuffle(audio_paths)
+  
+  for idx,audio_file in enumerate(audio_paths):
     
     transcription_index = audio_file.parts[-1].strip(audio_file.suffix)
           
@@ -155,7 +154,7 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   return data
 
 
-def write_tfrecords_by_split(out_path, split, data, sample_rate, form, **kwargs ):
+def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, hop_length, n_mfcc):
   """
   Write data loaded with `load_data_by_split` to a tf record file. If form is not specified raw audio are loaded. Otherwise `kwargs` passed
   to transformation function.
@@ -172,38 +171,49 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, **kwargs 
   
   out_path = create_tfrecords_folder(out_path)
   
-  out_file = str(out_path.joinpath('librispeech_tfrecords.' + split))
+  out_file = str(out_path.joinpath('tfrecords_{}.{}'.format(form,split.strip('-'))))
   
   logger.info("Examples will be stored in `{}`".format(str(out_file)))
   
   writer = tf.python_io.TFRecordWriter(out_file)
   
+#  pool = mp.Pool(processes= mp.cpu_count())
+#
+#  arguments_to_map = [(audio_example.audio_path, sample_rate, form, n_fft, hop_length, n_mfcc) for audio_example in data]
+#  
+#  labels = [audio_example.transcription for audio_example in data]
+#  
+#  logger.info("Computing feature representation for audios")
+#    
+#  audios = pool.async_map(get_audio, arguments_to_map).get()
+
   for idx,audio_example in enumerate(data,start = 1):
     
-    audio = get_audio(audio_example.audio_path, sample_rate, form, **kwargs)
-    
-    labels = audio_example.transcription
-    
-    if form == 'raw':
+    audio = get_audio(audio_example.audio_path,sample_rate, form, n_fft, hop_length, n_mfcc )
       
+    if form == 'raw':
+        
       audio = audio[np.newaxis,:]
-    
+      
     audio_shape = list(audio.shape)
-            
+      
+    print(audio_shape)
+              
     audio = audio.flatten()
     
+    labels = audio_example.transcription
+      
     tfrecord_write_example(writer = writer, audio =  audio, 
-                                   audio_shape = audio_shape,labels = labels)
+                                     audio_shape = audio_shape,labels = labels)
     if (idx)%1000 == 0:
-      
+        
       logger.info("Successfully wrote {} tfrecord examples".format(idx))
-      
+  
+
   writer.close()   
       
   logger.info("Completed writing examples in tfrecords format at `{}`".format(out_file))
-    
-    
-    
+  
 if __name__ == "__main__":
   
   args = parse_args()
@@ -231,7 +241,7 @@ if __name__ == "__main__":
   
   write_tfrecords_by_split(data= split_data, out_path = args.out, split = args.split,
                                sample_rate = args.sr, form = args.format,
-                               fft_window = 512, hop_length = 128, n_mels = 128)
+                               n_fft = 512, hop_length = 160, n_mfcc = 13)
   
   
   

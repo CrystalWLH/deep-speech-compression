@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
 
 
-def z_normalization(audio):
+def normalize(audio):
   """
   Normalize audio signal. Mean 0 std 1
   
@@ -26,8 +26,7 @@ def z_normalization(audio):
     normalized audio
   """
   
-  
-  return np.mean(audio) / np.std(audio)
+  return (audio - np.mean(audio)) / np.std(audio)
 
 def get_duration_in_s(audio, sample_rate):
   """
@@ -43,6 +42,32 @@ def get_duration_in_s(audio, sample_rate):
   
   return len(audio) / sample_rate
 
+
+def wave2mfccs(audio_path, sample_rate = 16000, n_mfcc=13, n_fft=512, hop_length=160):
+  """
+  Calculate mfcc coefficients from the given raw audio data
+  Args:
+    audio_data: numpyarray of raw audio wave
+    samplerate: the sample rate of the `audio_data`
+    n_mfcc: the number of coefficients to generate
+    n_fft: the window size of the fft
+    hop_length: the hop length for the window
+  Returns: the mfcc coefficients in the form [time, coefficients]
+  """
+  
+  audio = librosa.load(path = audio_path, sr = sample_rate)[0]
+  
+  mfcc = librosa.feature.mfcc(audio, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop_length)
+
+  # add derivatives and normalize
+  mfcc_delta = librosa.feature.delta(mfcc)
+  mfcc_delta2 = librosa.feature.delta(mfcc, order=2)
+  mfcc = np.concatenate((normalize(mfcc),
+                         normalize(mfcc_delta),
+                         normalize(mfcc_delta2)), axis=0)
+
+  return mfcc
+
 def load_raw_audio(audio_path , sample_rate):
   """
   Load single audio file from path.
@@ -53,27 +78,11 @@ def load_raw_audio(audio_path , sample_rate):
   :return:
     raw_audio (np.ndarray) : audio examples (wave)
   """
-  raw_audio = librosa.load(audio_path, sr = sample_rate)[0]
+  raw_audio = librosa.load(audio = audio_path, sr = sample_rate)[0]
   
-  return raw_audio
+  return normalize(raw_audio)
 
-def wave2ampl_spectrogram(audio, fft_window, hop_length):
-  """
-  Compute amplitude spectrogram from wave audio.
-  
-  :param:
-    audio (np.ndarray) : audio examples (wave)
-    fft_window (int) : window for FFT
-    hop_length (int) : number audio of frames between FFT columns
-  :return:
-    spectrogram (np.ndarray) : amplitude spectrogram
-  """
-  
-  spectogram = librosa.stft(y=audio, n_fft= fft_window, hop_length= hop_length)
-  
-  return np.abs(spectogram)
-
-def wave2power_spectrogram(audio, fft_window, hop_length):
+def wave2power_spectrogram(audio_path, sample_rate, n_fft=512, hop_length=160):
   """
   Compute power spectrogram from wave audio.
   
@@ -83,31 +92,17 @@ def wave2power_spectrogram(audio, fft_window, hop_length):
     hop_length (int) : number audio of frames between FFT columns
   :return:
     spectrogram (np.ndarray) : Power spectrogram
+    
   """
   
-  spectogram = librosa.stft(y=audio, n_fft= fft_window, hop_length= hop_length)
+  audio = librosa.load(path = audio_path, sr = sample_rate)[0]
   
-  return np.abs(spectogram) ** 2
-
-def wave2mel_spectrogram(audio, sample_rate, n_mels):
-  """
-  Compute power spectrogram from wave audio.
+  spectogram = librosa.stft(y=audio, n_fft= n_fft, hop_length= hop_length)
   
-  :param:
-    audio (np.ndarray) : audio examples (wave)
-    n_mels (int) : n mel frequencies
-  :return:
-    log_S (np.ndaray) : mel  spectrogram
-  """
-  
-  
-  S = librosa.feature.melspectrogram(audio, sr=sample_rate, n_mels=n_mels)
-  log_S = librosa.power_to_db(S, ref=np.max)
-  
-  return log_S
+  return normalize(np.abs(spectogram) ** 2)
 
 
-def get_audio(audio_path, sample_rate, form, **kwargs):
+def get_audio(audio_path, sample_rate = 16000, form = 'mfccs', n_fft = 400, hop_length = 160, n_mfcc = 40):
   """
   Wrapper function to load audio in desired form. First raw audio is loaded then if param `form` transformations ops
   are performed (to amplitude,power or mel spectrogram). 
@@ -122,19 +117,16 @@ def get_audio(audio_path, sample_rate, form, **kwargs):
     
   """
   
-  audio = load_raw_audio(audio_path, sample_rate)
+  if form == 'raw':
+    
+    audio = load_raw_audio(audio_path = audio_path, sample_rate = sample_rate)
   
-  if form == 'ampl':
-    
-    audio = wave2ampl_spectrogram(audio,fft_window = kwargs['fft_window'],
-                                  hop_length=kwargs['hop_length'])
-    
   elif form == 'power':
     
-    audio = wave2power_spectrogram(audio,fft_window = kwargs['fft_window'],
-                                  hop_length=kwargs['hop_length'])
-  elif form == 'mel':
+    audio = wave2power_spectrogram(audio_path = audio_path,sample_rate = sample_rate,n_fft = n_fft, hop_length = hop_length)
     
-    audio = wave2mel_spectrogram(audio, sample_rate, n_mels = kwargs['n_mels'])
+  elif form == 'mfccs':
+    
+    audio = wave2mfccs(audio_path = audio_path,sample_rate = sample_rate,n_fft = n_fft, hop_length = hop_length, n_mfcc = n_mfcc)
                                  
   return audio

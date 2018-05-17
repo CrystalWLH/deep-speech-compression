@@ -43,7 +43,7 @@ def gated_conv(inputs,filters, kernel_size, strides, activation,padding, data_fo
   return conv
   
   
-def convolutional_sequence(conv_type, inputs, filters, widths, strides, activation, data_format, train):
+def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts, activation, data_format, train):
   """
   Apply sequence of 1D convolution operation.
   
@@ -75,6 +75,9 @@ def convolutional_sequence(conv_type, inputs, filters, widths, strides, activati
                      data_format = data_format, name = conv_type)
       
       prev_layer = conv
+      
+      if dropouts[layer] != 0:
+        prev_layer = tf.layers.dropout(prev_layer, rate=dropouts[layer], training=train, name="dropout")
       
       tf.summary.histogram(layer_name, prev_layer)
       
@@ -142,6 +145,7 @@ def teacher_model_function(features, labels, mode, params):
                             strides = params.get('strides'),
                             activation = params.get('activation'),
                             data_format = params.get('data_format'),
+                            dropouts = params.get('dropouts'),
                             train = mode == tf.estimator.ModeKeys.TRAIN)
     
     logits = tf.layers.conv1d(inputs = pre_out, filters = params.get('vocab_size'), kernel_size = 1,
@@ -190,12 +194,20 @@ def teacher_model_function(features, labels, mode, params):
   
  
   if mode == tf.estimator.ModeKeys.TRAIN:
-        
+    
     with tf.variable_scope("optimizer"):
-      train_step = tf.train.AdamOptimizer().minimize(loss,
-                                                      global_step=tf.train.get_global_step())
+      optimizer = tf.train.AdamOptimizer()
       
-    return tf.estimator.EstimatorSpec(mode=mode, loss=loss,train_op=train_step) 
+      train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params.get('clipping'))
+      
+    with tf.name_scope("visualization"):
+      for g, v in grads_and_vars:
+        if v.name.find("kernel") >= 0:
+          tf.summary.scalar(v.name.replace(':0','') + "gradient_norm", tf.norm(g))
+      tf.summary.scalar("global_gradient_norm", glob_grad_norm)
+  
+      
+    return tf.estimator.EstimatorSpec(mode=mode, loss=loss,train_op=train_op) 
   
   
   assert mode == tf.estimator.ModeKeys.EVAL
@@ -206,8 +218,6 @@ def teacher_model_function(features, labels, mode, params):
   metrics = {"ler": (mean_ler, op)}
   
   return tf.estimator.EstimatorSpec(mode=mode, loss = loss, eval_metric_ops=metrics)
-
-
 
 
 def student_model_function(features, labels, mode, params):
@@ -236,7 +246,7 @@ def student_model_function(features, labels, mode, params):
   with tf.variable_scope('teacher_logits'):
   
     teacher_logits = tf.transpose(features['logits'],(1,0,2))
-    
+        
   with tf.variable_scope('data_format'):
     
     if params.get('data_format') == "channels_last":
@@ -253,6 +263,7 @@ def student_model_function(features, labels, mode, params):
                             strides = params.get('strides'),
                             activation = params.get('activation'),
                             data_format = params.get('data_format'),
+                            dropouts = params.get('dropouts'),
                             train =  True)
     
     logits = tf.layers.conv1d(inputs = pre_out, filters = params.get('vocab_size'), kernel_size = 1,
@@ -261,15 +272,12 @@ def student_model_function(features, labels, mode, params):
     
     
     if params.get('data_format') == 'channels_first':
-      trans_logits = tf.transpose(logits, (2,0,1))
+      logits = tf.transpose(logits, (2,0,1))
         
     elif params.get('data_format') == 'channels_last':
-      trans_logits = tf.transpose(logits, (1,0,2))
-  
-  student_logits_shape = tf.shape(trans_logits)
-  teacher_logits_shape = tf.shape(teacher_logits)
-  
-  tf.assert_equal(student_logits_shape,teacher_logits_shape)
+      logits = tf.transpose(logits, (1,0,2))
+        
+  tf.assert_equal(tf.shape(logits),tf.shape(teacher_logits))
         
   if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
     
@@ -292,41 +300,49 @@ def student_model_function(features, labels, mode, params):
       
     return tf.estimator.EstimatorSpec(mode = mode, predictions=pred)
   
-  with tf.name_scope('loss'):
     
-    with tf.variable_scope('ctc_loss'):
+  with tf.name_scope('ctc_loss'):
+  
+    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
     
-      sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
+    batches_ctc_loss = tf.nn.ctc_loss(labels = sparse_labels,
+                                      inputs =  logits, 
+                                      sequence_length = seqs_len)
+    ctc_loss = tf.reduce_mean(batches_ctc_loss)
+    tf.summary.scalar('ctc_loss',ctc_loss)
       
-      batches_ctc_loss = tf.nn.ctc_loss(labels = sparse_labels,
-                                        inputs =  logits, 
-                                        sequence_length = seqs_len)
-      ctc_loss = tf.reduce_mean(batches_ctc_loss)
-      tf.summary.scalar('ctc_loss',ctc_loss)
+  with tf.name_scope('distillation_loss'):
+    
+    # add softmax on right axis?
+    soft_targets = tf.nn.softmax(teacher_logits/params.get('temperature'), axis = 2)
+    
+    logits_fl = tf.reshape(logits, [tf.shape(logits)[1],-1])
+    st_fl = tf.reshape(soft_targets,[tf.shape(logits)[1],-1])
+                
+    xent_soft_targets = tf.reduce_mean(-tf.reduce_sum(st_fl * tf.log(logits_fl), axis=1))
+    
+    tf.summary.scalar('soft_target_xent', xent_soft_targets)
       
-    with tf.variable_scope('distillation_loss'):
-      
-      # add softmax on right axis?
-      soft_targets = teacher_logits/params.get('temperature')
-      
-      logits_fl = tf.reshape(logits, [tf.shape(logits)[1],-1])
-      st_fl = tf.reshape(soft_targets,[tf.shape(logits)[1],-1])
-                  
-      xent_soft_targets = tf.reduce_mean(-tf.reduce_sum(st_fl * tf.log(logits_fl), axis=1))
-      
-      tf.summary.scalar('soft_target_xent', xent_soft_targets)
-      
-      
+  
+  with tf.name_scope('total_loss'):
     loss = ctc_loss +  xent_soft_targets
   
  
   if mode == tf.estimator.ModeKeys.TRAIN:
-        
+    
     with tf.variable_scope("optimizer"):
-      train_step = tf.train.AdamOptimizer().minimize(loss,
-                                                      global_step=tf.train.get_global_step())
+      optimizer = tf.train.AdamOptimizer()
       
-    return tf.estimator.EstimatorSpec(mode=mode, loss=loss,train_op=train_step) 
+      train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params.get('clipping'))
+      
+    with tf.name_scope("visualization"):
+      for g, v in grads_and_vars:
+        if v.name.find("kernel") >= 0:
+          tf.summary.scalar(v.name.replace(':0','') + "gradient_norm", tf.norm(g))
+      tf.summary.scalar("global_gradient_norm", glob_grad_norm)
+  
+      
+    return tf.estimator.EstimatorSpec(mode=mode, loss=loss,train_op=train_op) 
   
   
   assert mode == tf.estimator.ModeKeys.EVAL
@@ -339,7 +355,32 @@ def student_model_function(features, labels, mode, params):
   return tf.estimator.EstimatorSpec(mode=mode, loss = loss, eval_metric_ops=metrics)
             
     
-    
+def clip_and_step(optimizer, loss, clipping):
+  """
+  Helper to compute/apply gradients with clipping.
+  
+  Parameters:
+  optimizer: Subclass of tf.train.Optimizer (e.g. GradientDescent or Adam).
+  loss: Scalar loss tensor.
+  clipping: Threshold to use for clipping.
+  
+  Returns:
+  The train op.
+  List of gradient, variable tuples, where gradients have been clipped.
+  Global norm before clipping.
+  """
+  grads_and_vars = optimizer.compute_gradients(loss)
+  grads, varis = zip(*grads_and_vars)
+  if clipping:
+      grads, global_norm = tf.clip_by_global_norm(grads, clipping,
+                                                  name="gradient_clipping")
+  else:
+      global_norm = tf.global_norm(grads, name="gradient_norm")
+  grads_and_vars = list(zip(grads, varis))  # list call is apparently vital!!
+  train_op = optimizer.apply_gradients(grads_and_vars,
+                                       global_step=tf.train.get_global_step(),
+                                       name="train_step")
+  return train_op, grads_and_vars, global_norm    
     
   
     
