@@ -9,42 +9,26 @@ Created on Sun May  6 15:53:15 2018
 #TODO
 # FIX BUFFER SIZE FOR SHUFFLE
 
-import numpy as np
 import tensorflow as tf
 
-def load_teacher_logits(tfrecord_path_train,teacher_model_function,input_channels,params_teacher, model_dir):
+def load_teacher_logits(tfrecord_logits):
   """
   Create dataset with containing teacher logits.
   
   :param:
-    input_fn (function) : input (training) function for teacher model
-    teacher_model_function (function) : estimator model_fn for teacher network
-    params (dict) : parameters of teacher model
-    model_dir (path) : path to teacher network checkpoint
     
   :return:
     dataset_logits (tf.data.Dataset) : dataset containing logits
   """
   
-  def input_fn():
-    return teacher_input_func(tfrecord_path = tfrecord_path_train, mode = 'predict',
-                              input_channels = input_channels,batch_size = 1)
-
-  
-  estimator = tf.estimator.Estimator(model_fn=teacher_model_function, params=params_teacher,
-                                     model_dir= model_dir)
-  
-  def gen_logits():
-    for batch_pred in estimator.predict(input_fn=input_fn, yield_single_examples = False):
-      yield np.squeeze(batch_pred['logits'])
-          
-  dataset_logits = tf.data.Dataset.from_generator(gen_logits, (tf.float32))
+  dataset_logits = tf.data.TFRecordDataset(tfrecord_logits)
+            
+  dataset_logits = dataset_logits.map(parse_tfrecord_logit)
     
   return dataset_logits
 
 
-def student_input_func(tfrecord_path,vocab_size,input_channels, 
-                       mode, batch_size,teacher_model_function, params_teacher, model_dir):
+def student_input_func(tfrecord_path,tfrecord_logits,vocab_size,input_channels,mode, batch_size):
   """
   Create input function for student network. Contains audio features and logits of teacher network.
   
@@ -63,8 +47,7 @@ def student_input_func(tfrecord_path,vocab_size,input_channels,
   
     dataset_std = load_dataset(tfrecord_path)
     
-    dataset_logits = load_teacher_logits(tfrecord_path,teacher_model_function,
-                                         input_channels, params_teacher, model_dir)
+    dataset_logits = load_teacher_logits(tfrecord_logits)
     
     dataset = tf.data.Dataset.zip((dataset_std, dataset_logits))
     
@@ -98,7 +81,7 @@ def load_dataset(tfrecord_path):
   
   dataset = dataset.map(parse_tfrecord_example)
   
-  dataset = dataset.shuffle(buffer_size= 100, seed = 42)
+#  dataset = dataset.shuffle(buffer_size= 100, seed = 42)
   
   return dataset
 
@@ -138,6 +121,25 @@ def parse_tfrecord_example(proto):
   
   return dense_audio, tf.cast(dense_trans, tf.int32)
 
+
+def parse_tfrecord_logit(proto):
+  
+  features = {"logits": tf.VarLenFeature(tf.float32),
+              "shape": tf.FixedLenFeature((2,), tf.int64)}
+  
+  parsed_features = tf.parse_single_example(proto, features)
+  
+  shape = tf.cast(parsed_features["shape"], tf.int32)
+  
+  sparse_logits = parsed_features["logits"]
+  
+  dense_logits = tf.reshape(tf.sparse_to_dense(sparse_logits.indices,
+                                              sparse_logits.dense_shape,
+                                              sparse_logits.values),shape)
+  
+  return dense_logits
+  
+  
 def teacher_input_func(tfrecord_path,input_channels, mode, batch_size):
   """
   Create dataset instance from tfrecord file. It prefetches mini-batch. If is train split dataset is repeated.
