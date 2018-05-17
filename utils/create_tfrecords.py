@@ -9,14 +9,12 @@ Created on Tue May  1 16:54:47 2018
 import argparse
 import logging
 import random
-import numpy as np
 import tensorflow as tf
 from pathlib import Path
 from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_pickle
-from utils.audio_utils import get_audio, load_raw_audio,wave2mfccs
+from utils.audio_utils import get_audio
 from collections import namedtuple
 import multiprocessing as mp
-
 #######################################
 # CTC LOSS : LARGEST VALUE 
 # OF CHAR INIDICES MUST BE FOR `BLANK`
@@ -177,34 +175,26 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
   
   writer = tf.python_io.TFRecordWriter(out_file)
   
-#  pool = mp.Pool(processes= mp.cpu_count())
-#
-#  arguments_to_map = [(audio_example.audio_path, sample_rate, form, n_fft, hop_length, n_mfcc) for audio_example in data]
-#  
-#  labels = [audio_example.transcription for audio_example in data]
-#  
-#  logger.info("Computing feature representation for audios")
-#    
-#  audios = pool.async_map(get_audio, arguments_to_map).get()
+  pool = mp.Pool(processes= mp.cpu_count())
 
-  for idx,audio_example in enumerate(data,start = 1):
+  arguments_to_map = [(audio_example.audio_path, sample_rate, form, n_fft, hop_length, n_mfcc) for audio_example in data]
+  
+  labels = [audio_example.transcription for audio_example in data]
+  
+  logger.info("Computing feature representation for audios")
     
-    audio = get_audio(audio_example.audio_path,sample_rate, form, n_fft, hop_length, n_mfcc )
-      
-    if form == 'raw':
-        
-      audio = audio[np.newaxis,:]
+  audios = pool.starmap(get_audio, arguments_to_map)  
+  
+  for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
       
     audio_shape = list(audio.shape)
       
     print(audio_shape)
               
     audio = audio.flatten()
-    
-    labels = audio_example.transcription
       
     tfrecord_write_example(writer = writer, audio =  audio, 
-                                     audio_shape = audio_shape,labels = labels)
+                                     audio_shape = audio_shape,labels = label)
     if (idx)%1000 == 0:
         
       logger.info("Successfully wrote {} tfrecord examples".format(idx))

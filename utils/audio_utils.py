@@ -42,7 +42,24 @@ def get_duration_in_s(audio, sample_rate):
   
   return len(audio) / sample_rate
 
-
+def load_raw_audio(audio_path , sample_rate):
+  """
+  Load single audio file from path.
+  
+  :param:
+    audio_path (str) : path to audio
+    sample_rate (int) : rate at which audio is sampled
+  :return:
+    raw_audio (np.ndarray) : audio examples (wave)
+  """
+  try:
+    raw_audio = librosa.load(path = audio_path, sr = sample_rate)[0]
+    return normalize(raw_audio[np.newaxis,:])
+  except IndexError:
+    logger.warning("No audio loaded for this file : `{}`".format(audio_path))
+    pass
+  
+  
 def wave2mfccs(audio_path, sample_rate = 16000, n_mfcc=13, n_fft=512, hop_length=160):
   """
   Calculate mfcc coefficients from the given raw audio data
@@ -55,9 +72,9 @@ def wave2mfccs(audio_path, sample_rate = 16000, n_mfcc=13, n_fft=512, hop_length
   Returns: the mfcc coefficients in the form [time, coefficients]
   """
   
-  audio = librosa.load(path = audio_path, sr = sample_rate)[0]
+  audio = load_raw_audio(audio_path = audio_path, sample_rate = sample_rate)
   
-  mfcc = librosa.feature.mfcc(audio, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop_length)
+  mfcc = librosa.feature.mfcc(y = audio, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop_length)
 
   # add derivatives and normalize
   mfcc_delta = librosa.feature.delta(mfcc)
@@ -67,20 +84,7 @@ def wave2mfccs(audio_path, sample_rate = 16000, n_mfcc=13, n_fft=512, hop_length
                          normalize(mfcc_delta2)), axis=0)
 
   return mfcc
-
-def load_raw_audio(audio_path , sample_rate):
-  """
-  Load single audio file from path.
   
-  :param:
-    audio_path (str) : path to audio
-    sample_rate (int) : rate at which audio is sampled
-  :return:
-    raw_audio (np.ndarray) : audio examples (wave)
-  """
-  raw_audio = librosa.load(audio = audio_path, sr = sample_rate)[0]
-  
-  return normalize(raw_audio)
 
 def wave2power_spectrogram(audio_path, sample_rate, n_fft=512, hop_length=160):
   """
@@ -95,7 +99,7 @@ def wave2power_spectrogram(audio_path, sample_rate, n_fft=512, hop_length=160):
     
   """
   
-  audio = librosa.load(path = audio_path, sr = sample_rate)[0]
+  audio = load_raw_audio(audio_path = audio_path, sample_rate = sample_rate)
   
   spectogram = librosa.stft(y=audio, n_fft= n_fft, hop_length= hop_length)
   
@@ -122,11 +126,32 @@ def get_audio(audio_path, sample_rate = 16000, form = 'mfccs', n_fft = 400, hop_
     audio = load_raw_audio(audio_path = audio_path, sample_rate = sample_rate)
   
   elif form == 'power':
-    
-    audio = wave2power_spectrogram(audio_path = audio_path,sample_rate = sample_rate,n_fft = n_fft, hop_length = hop_length)
+  
+   audio = wave2power_spectrogram(audio_path = audio_path,sample_rate = sample_rate,n_fft = n_fft, hop_length = hop_length)
     
   elif form == 'mfccs':
     
     audio = wave2mfccs(audio_path = audio_path,sample_rate = sample_rate,n_fft = n_fft, hop_length = hop_length, n_mfcc = n_mfcc)
                                  
   return audio
+
+
+if __name__ == "__main__":
+  
+  test_raw = ('LibriSpeech/dev-other/6455/66379/6455-66379-0011.flac', 16000, 'raw', 512, 160, 13)
+  
+  test_spec = ('LibriSpeech/dev-other/6455/66379/6455-66379-0011.flac', 16000, 'power', 512, 160, 13)
+  
+  test_mfccs = ('LibriSpeech/dev-other/6455/66379/6455-66379-0011.flac', 16000, 'mfccs', 512, 160, 13)
+  
+  raw = get_audio(*test_raw)
+  
+  print(raw.shape)
+  
+  spec = get_audio(*test_spec)
+  
+  print(spec.shape)
+  
+  mfccs = get_audio(*test_mfccs)
+  
+  print(mfccs.shape)
