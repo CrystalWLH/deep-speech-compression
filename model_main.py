@@ -66,6 +66,7 @@ def config2params(config):
   params['filters'] = json.loads(configuration[model_type].get('filters', [250,250]))
   params['widths'] = json.loads(configuration[model_type].get('widths', [7,7]))
   params['strides'] = json.loads(configuration[model_type].get('strides', [1,1]))
+  params['dropouts'] = json.loads(configuration[model_type].get('dropouts', [0,0]))
   
   
   params['vocab_size'] = len(env_params.get('char2idx'))
@@ -74,6 +75,7 @@ def config2params(config):
   params['data_path'] = configuration['GENERAL'].get('data_path','./test')
   params['activation'] = map_act.get(configuration['TRAIN'].get('activation','relu'), 'relu')
   params['bn'] = configuration['TRAIN'].getboolean('bn', False)
+  params['clipping'] = configuration['TRAIN'].getint('clipping', 0)
   
   
   return env_params,params
@@ -98,7 +100,7 @@ if __name__ == '__main__':
         return teacher_input_func(tfrecord_path = './test/librispeech_tfrecords.dev',
                                   input_channels = env_params.get('input_channels'),
                                   mode = 'train',
-                                  batch_size = 2 ) #env_params.get('batch_size')
+                                  batch_size = 5 ) #env_params.get('batch_size')
                                   
 
       estimator.train(input_fn= input_fn,steps= env_params.get('steps'))
@@ -121,18 +123,15 @@ if __name__ == '__main__':
         return teacher_input_func(tfrecord_path = './test/librispeech_tfrecords.dev',
                                   input_channels = env_params.get('input_channels'),
                                   mode = 'predict', 
-                                  batch_size = 2 )
+                                  batch_size = 1 )
       
       idx2char = decoder_dict(env_params.get('char2idx'))
       for batch_pred in estimator.predict(input_fn=input_fn, yield_single_examples = False):
-        for pred in batch_pred['decoding']:
-          print(decode_sequence(pred,idx2char))
+        for p in batch_pred['decoding']:
+          print(decode_sequence(p,idx2char))
           
           
   elif env_params.get('model_type') == 'student':
-    
-    env_teacher,params_teacher = config2params(env_params.get('teacher_config'))
-    
     
     estimator = tf.estimator.Estimator(model_fn=student_model_function, params=params,
                                        model_dir= env_params.get('save_model'),config=config)
@@ -141,13 +140,12 @@ if __name__ == '__main__':
       
       def input_fn():
         return student_input_func(tfrecord_path = './test/librispeech_tfrecords.dev',
+                                  tfrecord_logits = './test/w2l_v1.logits',
                                   vocab_size = len(env_params.get('char2idx')),
                                   input_channels = env_params.get('input_channels'), 
                                   mode = 'train',
-                                  batch_size = 5, #env_params.get('batch_size')
-                                  teacher_model_function = teacher_model_function,
-                                  params_teacher = params_teacher,
-                                  model_dir = env_params.get('teacher_dir'))
+                                  batch_size = 2 #env_params.get('batch_size')
+                                  )
         
       estimator.train(input_fn= input_fn,steps= env_params.get('steps'))
         
