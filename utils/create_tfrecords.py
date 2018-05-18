@@ -135,13 +135,17 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
     
     random.shuffle(audio_paths)
   
-  for idx,audio_file in enumerate(audio_paths):
+  for idx,audio_file in enumerate(audio_paths,start = 1):
     
     transcription_index = audio_file.parts[-1].strip(audio_file.suffix)
           
     labels = id2encoded_transc[transcription_index]
           
     data.append(AudioExample(str(audio_file),labels))
+    
+    if (idx%1000) == 0:
+      
+      logger.info("Loaded {} examples".format(idx))
       
     if limit and idx >= limit:
       
