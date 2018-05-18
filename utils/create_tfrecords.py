@@ -131,7 +131,7 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   
   audio_paths = [audio for split_folder in splits_folders for audio in split_folder.glob('**/*.flac')]
   
-  if split.startswith('train'):
+  if split.startswith('train') or split.startswith('dev'):
     
     random.shuffle(audio_paths)
   

@@ -45,6 +45,7 @@ def config2params(config):
   params = {}
   
   env_params['model_type'] = configuration['GENERAL'].get('model_type','teacher')
+  params['model_type'] = env_params['model_type']
   env_params['save_model'] = configuration['GENERAL'].get('save_model','models')
   env_params['steps'] = configuration['TRAIN'].getint('steps', 10)
   env_params['char2idx'] = load_pickle(configuration['GENERAL'].get('vocab_path','./test/vocab.pkl'))
@@ -61,7 +62,7 @@ def config2params(config):
     env_params['teacher_config'] = configuration['GENERAL'].get('teacher_config')
     env_params['teacher_dir'] = configuration['GENERAL'].get('teacher_dir')
     params['temperature'] = configuration['TRAIN'].getint('temperature', 3)
-  
+    params['alpha'] = configuration['TRAIN'].getfloat('alpha', 0.3)
     
   params['filters'] = json.loads(configuration[model_type].get('filters', [250,250]))
   params['widths'] = json.loads(configuration[model_type].get('widths', [7,7]))

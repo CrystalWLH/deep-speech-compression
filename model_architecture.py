@@ -198,7 +198,7 @@ def teacher_model_function(features, labels, mode, params):
     with tf.variable_scope("optimizer"):
       optimizer = tf.train.AdamOptimizer()
       
-      train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params.get('clipping'))
+      train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
       
     with tf.name_scope("visualization"):
       for g, v in grads_and_vars:
@@ -313,10 +313,11 @@ def student_model_function(features, labels, mode, params):
       
   with tf.name_scope('distillation_loss'):
     
-    # add softmax on right axis?
+    # right axis?
+    softmaxed_logits = tf.nn.softmax(logits, axis = 2)
     soft_targets = tf.nn.softmax(teacher_logits/params.get('temperature'), axis = 2)
     
-    logits_fl = tf.reshape(logits, [tf.shape(logits)[1],-1])
+    logits_fl = tf.reshape(softmaxed_logits, [tf.shape(logits)[1],-1])
     st_fl = tf.reshape(soft_targets,[tf.shape(logits)[1],-1])
                 
     xent_soft_targets = tf.reduce_mean(-tf.reduce_sum(st_fl * tf.log(logits_fl), axis=1))
@@ -325,7 +326,8 @@ def student_model_function(features, labels, mode, params):
       
   
   with tf.name_scope('total_loss'):
-    loss = ctc_loss +  xent_soft_targets
+    alpha = params.get('alpha')
+    loss = (1 - alpha) * ctc_loss +  (alpha * xent_soft_targets)
   
  
   if mode == tf.estimator.ModeKeys.TRAIN:
@@ -333,7 +335,7 @@ def student_model_function(features, labels, mode, params):
     with tf.variable_scope("optimizer"):
       optimizer = tf.train.AdamOptimizer()
       
-      train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params.get('clipping'))
+      train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
       
     with tf.name_scope("visualization"):
       for g, v in grads_and_vars:
@@ -355,7 +357,7 @@ def student_model_function(features, labels, mode, params):
   return tf.estimator.EstimatorSpec(mode=mode, loss = loss, eval_metric_ops=metrics)
             
     
-def clip_and_step(optimizer, loss, clipping):
+def clip_and_step(optimizer, loss, params):
   """
   Helper to compute/apply gradients with clipping.
   
@@ -371,8 +373,13 @@ def clip_and_step(optimizer, loss, clipping):
   """
   grads_and_vars = optimizer.compute_gradients(loss)
   grads, varis = zip(*grads_and_vars)
-  if clipping:
-      grads, global_norm = tf.clip_by_global_norm(grads, clipping,
+  
+  if params.get('model_type') == 'student':
+        
+    grads = [grad * tf.cast(tf.pow(params.get('temperature'),2),tf.float32) for grad in grads ]
+      
+  if params.get('clipping'):
+      grads, global_norm = tf.clip_by_global_norm(grads, params.get('clipping'),
                                                   name="gradient_clipping")
   else:
       global_norm = tf.global_norm(grads, name="gradient_norm")
