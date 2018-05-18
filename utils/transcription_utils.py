@@ -24,12 +24,23 @@ def decode_sequence(seq, idx2char):
   return [idx2char.get(c) for c in seq]
 
 def load_pickle(file_path):
+  """
+  Util funciton to load character lookup from pickle format 
   
-  file_path = str(Path(file_path))
+  :param:
+    char_enc (dict) : character lookup
+    path (str) : path where to store item
+  """
+  path = Path(file_path)
   
-  item = pickle.load(open(file_path, mode = "rb"))
+  if path.exists():
+    
+    item = pickle.load(open(str(path), mode = "rb"))
   
-  return item
+    return item
+  
+  else:
+    raise ValueError("File {} not found!".format(file_path))
 
 
 def save_pickle(char_enc, path, file_name):
@@ -40,12 +51,13 @@ def save_pickle(char_enc, path, file_name):
     char_enc (dict) : character lookup
     path (str) : path where to store item
   """
+  path = Path(path).joinpath(file_name)
   
-  path = str(Path(path).joinpath(file_name))
+  if not path.exists():
   
-  pickle.dump( char_enc, open( path, 'wb'))
+    pickle.dump( char_enc, open( str(path), 'wb'))
   
-  logger.info("Saved character to indices lookup at `{}`".format(path))
+    logger.info("Saved character to indices lookup at `{}`".format(path))
 
 
 def sent_char_to_ids(sent,mapping):
@@ -148,3 +160,5 @@ def create_vocab_id2transcript(dir_path):
   logger.info("Created transcriptions lookup")
   
   return chars_set, ids2transcriptions
+
+

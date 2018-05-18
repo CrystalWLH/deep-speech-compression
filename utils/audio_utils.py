@@ -54,7 +54,7 @@ def load_raw_audio(audio_path , sample_rate):
   """
   try:
     raw_audio = librosa.load(path = audio_path, sr = sample_rate)[0]
-    return normalize(raw_audio[np.newaxis,:])
+    return raw_audio
   except IndexError:
     logger.warning("No audio loaded for this file : `{}`".format(audio_path))
     pass

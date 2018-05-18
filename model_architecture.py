@@ -136,6 +136,15 @@ def teacher_model_function(features, labels, mode, params):
       features = tf.transpose(features, (0, 2, 1))
       
   seqs_len = length(features, data_format = params.get('data_format'))
+  
+  
+  with tf.variable_scope("account_for_strides"):
+  
+    if 2 in params.get('strides'):
+      
+      print("Reducing lenghts")
+      
+      seqs_len = tf.cast(tf.div(seqs_len,2), tf.int32)
     
   with tf.variable_scope("model"):
     
@@ -159,6 +168,9 @@ def teacher_model_function(features, labels, mode, params):
       
     elif params.get('data_format') == 'channels_last':
       logits = tf.transpose(logits, (1,0,2))
+  
+  with tf.variable_scope('viz_logits'): 
+    tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
   
   if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
     
@@ -246,6 +258,8 @@ def student_model_function(features, labels, mode, params):
   with tf.variable_scope('teacher_logits'):
   
     teacher_logits = tf.transpose(features['logits'],(1,0,2))
+    
+    tf.summary.image('teacher_logits', tf.expand_dims(tf.transpose(teacher_logits, (1, 2, 0)), 3))
         
   with tf.variable_scope('data_format'):
     
@@ -276,8 +290,10 @@ def student_model_function(features, labels, mode, params):
         
     elif params.get('data_format') == 'channels_last':
       logits = tf.transpose(logits, (1,0,2))
-        
+      
   tf.assert_equal(tf.shape(logits),tf.shape(teacher_logits))
+  
+  tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
         
   if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
     

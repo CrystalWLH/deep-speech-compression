@@ -48,9 +48,12 @@ def config2params(config):
   params['model_type'] = env_params['model_type']
   env_params['save_model'] = configuration['GENERAL'].get('save_model','models')
   env_params['steps'] = configuration['TRAIN'].getint('steps', 10)
-  env_params['char2idx'] = load_pickle(configuration['GENERAL'].get('vocab_path','./test/vocab.pkl'))
   env_params['input_channels'] = configuration['GENERAL'].getint('input_channels', None)
   env_params['batch_size'] = configuration['TRAIN'].getint('batch_size', 512)
+  env_params['train_data'] = configuration['FILES'].get('train_data','./tfrecords_data/tfrecords_mfccs.train')
+  env_params['eval_data'] = configuration['FILES'].get('train_data','./tfrecords_data/tfrecords_mfccs.dev_clean')
+  env_params['test_data'] = configuration['FILES'].get('train_data','./tfrecords_data/tfrecords_mfccs.test_clean')
+  env_params['char2idx'] = load_pickle(configuration['FILES'].get('vocab_path','./test/vocab.pkl'))
   
   if not env_params['input_channels']:
     logger.warning("Number of input channels is not specified! Please provide this field")
@@ -59,8 +62,9 @@ def config2params(config):
   
   if model_type == 'STUDENT':
   
-    env_params['teacher_config'] = configuration['GENERAL'].get('teacher_config')
-    env_params['teacher_dir'] = configuration['GENERAL'].get('teacher_dir')
+    env_params['teacher_config'] = configuration['FILES'].get('teacher_config')
+    env_params['teacher_dir'] = configuration['FILES'].get('teacher_dir')
+    env_params['teacher_logits'] = configuration['FILES'].get('teacher_logits')
     params['temperature'] = configuration['TRAIN'].getint('temperature', 3)
     params['alpha'] = configuration['TRAIN'].getfloat('alpha', 0.3)
     
@@ -69,11 +73,16 @@ def config2params(config):
   params['strides'] = json.loads(configuration[model_type].get('strides', [1,1]))
   params['dropouts'] = json.loads(configuration[model_type].get('dropouts', [0,0]))
   
+  lengths = list(map(len, [params['filters'], params['widths'], params['strides'],params['dropouts']  ] ))
+  
+  if len(set(lengths)) > 1:
+    raise ValueError("Plaese check the net definition in {} section! All the lists must have same length! \n \
+                   Found : `filters` : {},`widths` : {},`strides` : {},`dropouts` : {}".format(model_type,*lengths))
+  
   
   params['vocab_size'] = len(env_params.get('char2idx'))
   params['data_format'] = configuration['GENERAL'].get('data_format','channels_last')
   params['conv_type'] = configuration['GENERAL'].get('conv_type','conv')
-  params['data_path'] = configuration['GENERAL'].get('data_path','./test')
   params['activation'] = map_act.get(configuration['TRAIN'].get('activation','relu'), 'relu')
   params['bn'] = configuration['TRAIN'].getboolean('bn', False)
   params['clipping'] = configuration['TRAIN'].getint('clipping', 0)
@@ -86,7 +95,7 @@ if __name__ == '__main__':
   args = parse_arguments()
   
   env_params,params = config2params(args.config)
-  
+    
   config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1, save_checkpoints_steps=2)
   
   
@@ -98,10 +107,10 @@ if __name__ == '__main__':
     if args.mode == "train":
       
       def input_fn():
-        return teacher_input_func(tfrecord_path = './test/librispeech_tfrecords.dev',
+        return teacher_input_func(tfrecord_path = env_params.get('train_data'),
                                   input_channels = env_params.get('input_channels'),
                                   mode = 'train',
-                                  batch_size = 5 ) #env_params.get('batch_size')
+                                  batch_size = env_params.get('batch_size'))
                                   
 
       estimator.train(input_fn= input_fn,steps= env_params.get('steps'))
@@ -109,10 +118,10 @@ if __name__ == '__main__':
     elif args.mode == "eval":
       
       def input_fn():
-        return teacher_input_func(tfrecord_path = './test/librispeech_tfrecords.dev',
+        return teacher_input_func(tfrecord_path = env_params.get('eval_data'),
                                     input_channels = env_params.get('input_channels'),
                                     mode = 'eval',
-                                    batch_size = 5)
+                                    batch_size = env_params.get('batch_size'))
       
       
       res = estimator.evaluate(input_fn=input_fn)
@@ -121,7 +130,7 @@ if __name__ == '__main__':
     elif args.mode == "predict":
       
       def input_fn():
-        return teacher_input_func(tfrecord_path = './test/librispeech_tfrecords.dev',
+        return teacher_input_func(tfrecord_path = env_params.get('test_data'),
                                   input_channels = env_params.get('input_channels'),
                                   mode = 'predict', 
                                   batch_size = 1 )
@@ -140,12 +149,12 @@ if __name__ == '__main__':
     if args.mode == 'train':
       
       def input_fn():
-        return student_input_func(tfrecord_path = './test/librispeech_tfrecords.dev',
-                                  tfrecord_logits = './test/w2l_v1.logits',
+        return student_input_func(tfrecord_path = env_params.get('train_data'),
+                                  tfrecord_logits = env_params.get('teacher_logits'),
                                   vocab_size = len(env_params.get('char2idx')),
                                   input_channels = env_params.get('input_channels'), 
                                   mode = 'train',
-                                  batch_size = 2 #env_params.get('batch_size')
+                                  batch_size = env_params.get('batch_size')
                                   )
         
       estimator.train(input_fn= input_fn,steps= env_params.get('steps'))

@@ -9,10 +9,11 @@ Created on Tue May  1 16:54:47 2018
 import argparse
 import logging
 import random
+import numpy as np
 import tensorflow as tf
 from pathlib import Path
 from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_pickle
-from utils.audio_utils import get_audio
+from utils.audio_utils import get_audio,normalize
 from collections import namedtuple
 import multiprocessing as mp
 #######################################
@@ -29,8 +30,9 @@ def parse_args():
   """
   parser = argparse.ArgumentParser(description='Create tfrecord files from LibriSpeech corpus')
   parser.add_argument('-d', '--data', required=True, type = str, help='Path to unzipped LibriSpeech dataset')
-  parser.add_argument('-s', '--split', required=True, type = str, choices = ('train','dev','test','dev-other','dev-clean','test-other','test-clean'),
-                      help='Which dataset split to be parsed. Either a split (`train`,`dev`,`test`) or a specific folder e.g. (`dev-other`)')
+  parser.add_argument('-s', '--splits', required=True, type = str,
+                      help="Comma separated list of either folders (`dev-others`), split (train) or mixed. \
+                      If generic split is defined (e.g. `train`) folder for that split will be merged into single file.")
   parser.add_argument('-o', '--out', required=True, type = str, help='Directory where to store tfrecord files')
   parser.add_argument('-f', '--format', type = str, default = 'mfccs', choices = ('raw','power','mfccs'),
                       help='Representation of the audio to be used: `raw` (wave),`power` : power spectrogram, `mfccs` : MFCCs . Default to `mfccs`')
@@ -133,6 +135,8 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   
   if split.startswith('train') or split.startswith('dev'):
     
+    logger.info("Shuffling data before parsing")
+    
     random.shuffle(audio_paths)
   
   for idx,audio_file in enumerate(audio_paths,start = 1):
@@ -190,11 +194,16 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
   audios = pool.starmap(get_audio, arguments_to_map)  
   
   for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
+    
+    if form == 'raw':
+      audio = normalize(audio[np.newaxis, :])
       
     audio_shape = list(audio.shape)
-      
-    print(audio_shape)
-              
+    
+    if idx == 1:
+    
+      logger.info("Number of input channels is : {}".format(audio_shape))
+                    
     audio = audio.flatten()
       
     tfrecord_write_example(writer = writer, audio =  audio, 
@@ -211,9 +220,7 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
 if __name__ == "__main__":
   
   args = parse_args()
-  
-  logger.info("Start process for creating tfrecord files for split : `{}`".format(args.split))
-  
+    
   create_tfrecords_folder(args.out)
   
   chars_set, ids2trans = create_vocab_id2transcript(args.data)
@@ -230,12 +237,16 @@ if __name__ == "__main__":
       
   encoded_transcriptions = get_id2encoded_transcriptions(ids2trans, chars2ids)
   
-  split_data = load_data_by_split(data_path = args.data, split = args.split,
-                                 id2encoded_transc= encoded_transcriptions, limit = args.limit )
+  for split in args.splits.split(','):
+    
+    logger.info("\n\nProcessing files in `{}`\n\n".format(split))
   
-  write_tfrecords_by_split(data= split_data, out_path = args.out, split = args.split,
-                               sample_rate = args.sr, form = args.format,
-                               n_fft = 512, hop_length = 160, n_mfcc = 13)
+    split_data = load_data_by_split(data_path = args.data, split = split,
+                                   id2encoded_transc= encoded_transcriptions, limit = args.limit )
+    
+    write_tfrecords_by_split(data= split_data, out_path = args.out, split = split,
+                                 sample_rate = args.sr, form = args.format,
+                                 n_fft = 512, hop_length = 160, n_mfcc = 40)
   
   
   

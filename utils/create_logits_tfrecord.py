@@ -48,7 +48,7 @@ if __name__  == "__main__":
   
   
   def input_fn():
-    return teacher_input_func(tfrecord_path = './test/librispeech_tfrecords.dev',
+    return teacher_input_func(tfrecord_path = env_teacher.get('train_data'),
                               input_channels = env_teacher.get('input_channels'),
                               mode = 'predict', 
                               batch_size = 1 )
