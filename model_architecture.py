@@ -343,14 +343,14 @@ def student_model_function(features, labels, mode, params):
                 
     xent_soft_targets = tf.reduce_mean(-tf.reduce_sum(st_fl * tf.log(logits_fl), axis=1))
     
-    tf.summary.scalar('soft_target_xent', xent_soft_targets)
+    xent_st = tf.cast(tf.square(params.get('temperature')), tf.float32) * xent_soft_targets
+    
+    tf.summary.scalar('soft_target_xent', xent_st)
       
-  
   with tf.name_scope('total_loss'):
     alpha = params.get('alpha')
-    loss = (1 - alpha) * ctc_loss +  (alpha * xent_soft_targets)
+    loss = (1 - alpha) * ctc_loss +  (alpha * xent_st)
   
- 
   if mode == tf.estimator.ModeKeys.TRAIN:
     
     with tf.variable_scope("optimizer"):
@@ -398,10 +398,6 @@ def clip_and_step(optimizer, loss, params):
   """
   grads_and_vars = optimizer.compute_gradients(loss)
   grads, varis = zip(*grads_and_vars)
-  
-#  if params.get('model_type') == 'student':
-#        
-#    grads = [grad * tf.cast(tf.pow(params.get('temperature'),2),tf.float32) for grad in grads ]
       
   if params.get('clipping'):
       grads, global_norm = tf.clip_by_global_norm(grads, params.get('clipping'),
