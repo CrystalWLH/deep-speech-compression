@@ -5,9 +5,8 @@ Created on Sun May  6 16:12:41 2018
 
 @author: Samuele Garda
 """
-#TODO
-# CTC CRASHES ON BATCH_SIZE = 1
 
+import os
 import argparse
 import logging
 from configparser import ConfigParser
@@ -34,6 +33,15 @@ def parse_arguments():
   return args
 
 
+def complete_student_name(env_params,params):
+  
+  model_name = "{}_teach{}_temp{}_alpha{}_{}l".format(env_params.get('save_model'),
+                env_params.get('teacher_dir').split(os.sep)[-1],
+                params.get('temperature'),params.get('alpha'), len(params.get('filters')))
+  
+  return model_name
+  
+
 def config2params(config):
   
   configuration = ConfigParser(allow_no_value=False)
@@ -47,7 +55,7 @@ def config2params(config):
   env_params['model_type'] = configuration['GENERAL'].get('model_type','teacher')
   params['model_type'] = env_params['model_type']
   env_params['save_model'] = configuration['GENERAL'].get('save_model','models')
-  env_params['steps'] = configuration['TRAIN'].getint('steps', 10)
+  env_params['epochs'] = configuration['TRAIN'].getint('epochs', 50)
   env_params['input_channels'] = configuration['GENERAL'].getint('input_channels', None)
   env_params['batch_size'] = configuration['TRAIN'].getint('batch_size', 512)
   env_params['train_data'] = configuration['FILES'].get('train_data','./tfrecords_data/tfrecords_mfccs.train')
@@ -79,7 +87,8 @@ def config2params(config):
     raise ValueError("Plaese check the net definition in {} section! All the lists must have same length! \n \
                    Found : `filters` : {},`widths` : {},`strides` : {},`dropouts` : {}".format(model_type,*lengths))
   
-  
+  params['adam_lr'] = configuration['TRAIN'].getfloat('adam_lr',1e-4)
+  params['adam_eps'] = configuration['TRAIN'].getfloat('adam_eps',1e-8)
   params['vocab_size'] = len(env_params.get('char2idx'))
   params['data_format'] = configuration['GENERAL'].get('data_format','channels_last')
   params['conv_type'] = configuration['GENERAL'].get('conv_type','conv')
@@ -96,7 +105,9 @@ if __name__ == '__main__':
   
   env_params,params = config2params(args.config)
     
-  config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1, save_checkpoints_steps=2)
+  config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1, save_checkpoints_steps=20)
+  
+  logging_hook = tf.train.LoggingTensorHook({"mean_ler": "mean_ler"}, every_n_iter=1000)
   
   
   if env_params.get('model_type') == 'teacher':
@@ -110,6 +121,7 @@ if __name__ == '__main__':
         return teacher_input_func(tfrecord_path = env_params.get('train_data'),
                                   input_channels = env_params.get('input_channels'),
                                   mode = 'train',
+                                  epochs = env_params.get('epochs'),
                                   batch_size = env_params.get('batch_size'))
                                   
 
@@ -121,6 +133,7 @@ if __name__ == '__main__':
         return teacher_input_func(tfrecord_path = env_params.get('eval_data'),
                                     input_channels = env_params.get('input_channels'),
                                     mode = 'eval',
+                                    epochs = 1,
                                     batch_size = env_params.get('batch_size'))
       
       
@@ -133,6 +146,7 @@ if __name__ == '__main__':
         return teacher_input_func(tfrecord_path = env_params.get('test_data'),
                                   input_channels = env_params.get('input_channels'),
                                   mode = 'predict', 
+                                  epochs = 1,
                                   batch_size = 1 )
       
       idx2char = decoder_dict(env_params.get('char2idx'))
@@ -144,7 +158,8 @@ if __name__ == '__main__':
   elif env_params.get('model_type') == 'student':
     
     estimator = tf.estimator.Estimator(model_fn=student_model_function, params=params,
-                                       model_dir= env_params.get('save_model'),config=config)
+                                       model_dir= complete_student_name(env_params,params),
+                                       config=config)
     
     if args.mode == 'train':
       
@@ -154,10 +169,11 @@ if __name__ == '__main__':
                                   vocab_size = len(env_params.get('char2idx')),
                                   input_channels = env_params.get('input_channels'), 
                                   mode = 'train',
+                                  epochs = env_params.get('epochs'),
                                   batch_size = env_params.get('batch_size')
                                   )
         
-      estimator.train(input_fn= input_fn,steps= env_params.get('steps'))
+      estimator.train(input_fn= input_fn)
         
         
         

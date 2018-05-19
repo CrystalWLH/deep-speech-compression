@@ -24,8 +24,8 @@ def parse_args():
   Parse arguments for script.
   """
   parser = argparse.ArgumentParser(description='Create tfrecord files for teacher logits')
-  parser.add_argument('-p', '--path', required=True, type = str, help='Folder where to store logits')
-  parser.add_argument('-n', '--model-name', required=True, type = str, help='Identifier for which model produced the logits')
+  parser.add_argument('-p', '--path', default = './tfrecords_data', type = str, help='Folder where to store logits')
+  parser.add_argument('-m', '--model-name', required=True, type = str, help='Identifier for which model produced the logits')
   parser.add_argument('-c', '--config', required=True, type = str, help='Path to teacher model configuration')
 
   return parser.parse_args()
@@ -51,6 +51,7 @@ if __name__  == "__main__":
     return teacher_input_func(tfrecord_path = env_teacher.get('train_data'),
                               input_channels = env_teacher.get('input_channels'),
                               mode = 'predict', 
+                              epochs = 1,
                               batch_size = 1 )
   
   estimator = tf.estimator.Estimator(model_fn=teacher_model_function, params=params_teacher,

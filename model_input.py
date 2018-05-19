@@ -28,7 +28,7 @@ def load_teacher_logits(tfrecord_logits):
   return dataset_logits
 
 
-def student_input_func(tfrecord_path,tfrecord_logits,vocab_size,input_channels,mode, batch_size):
+def student_input_func(tfrecord_path,tfrecord_logits,vocab_size,input_channels,epochs,mode, batch_size):
   """
   Create input function for student network. Contains audio features and logits of teacher network.
   
@@ -53,7 +53,7 @@ def student_input_func(tfrecord_path,tfrecord_logits,vocab_size,input_channels,m
     
     if mode == 'train':
       
-      dataset = dataset.repeat()
+      dataset = dataset.repeat(epochs)
           
     dataset = dataset.padded_batch(batch_size, padded_shapes= (([input_channels,-1], [-1]), [-1,vocab_size]),
                                                padding_values = ( ( 0. , -1), 0. ))
@@ -140,7 +140,7 @@ def parse_tfrecord_logit(proto):
   return dense_logits
   
   
-def teacher_input_func(tfrecord_path,input_channels, mode, batch_size):
+def teacher_input_func(tfrecord_path,input_channels, mode, epochs, batch_size):
   """
   Create dataset instance from tfrecord file. It prefetches mini-batch. If is train split dataset is repeated.
   
@@ -159,7 +159,7 @@ def teacher_input_func(tfrecord_path,input_channels, mode, batch_size):
         
     if mode == 'train':
       
-      dataset = dataset.repeat()
+      dataset = dataset.repeat(epochs)
           
     dataset = dataset.padded_batch(batch_size, padded_shapes= ([input_channels,-1],[-1]),
                                                padding_values =  (0.,-1))

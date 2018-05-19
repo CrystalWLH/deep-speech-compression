@@ -171,6 +171,7 @@ def teacher_model_function(features, labels, mode, params):
   
   with tf.variable_scope('viz_logits'): 
     tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
+        
   
   if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
     
@@ -208,14 +209,18 @@ def teacher_model_function(features, labels, mode, params):
   if mode == tf.estimator.ModeKeys.TRAIN:
     
     with tf.variable_scope("optimizer"):
-      optimizer = tf.train.AdamOptimizer()
-      
-      train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
+      optimizer = tf.train.AdamOptimizer(learning_rate = params.get('adam_lr'), epsilon = params.get('adam_eps'))
+      if params.get('use_bn'):
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+          train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
+      else:
+        train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
       
     with tf.name_scope("visualization"):
       for g, v in grads_and_vars:
         if v.name.find("kernel") >= 0:
-          tf.summary.scalar(v.name.replace(':0','') + "gradient_norm", tf.norm(g))
+          tf.summary.scalar(v.name.replace(':0','_') + "gradient_norm", tf.norm(g))
       tf.summary.scalar("global_gradient_norm", glob_grad_norm)
   
       
@@ -349,14 +354,18 @@ def student_model_function(features, labels, mode, params):
   if mode == tf.estimator.ModeKeys.TRAIN:
     
     with tf.variable_scope("optimizer"):
-      optimizer = tf.train.AdamOptimizer()
-      
-      train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
-      
+      optimizer = tf.train.AdamOptimizer(learning_rate = params.get('adam_lr'), epsilon = params.get('adam_eps'))
+      if params.get('use_bn'):
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+          train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
+      else:
+        train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
+        
     with tf.name_scope("visualization"):
       for g, v in grads_and_vars:
         if v.name.find("kernel") >= 0:
-          tf.summary.scalar(v.name.replace(':0','') + "gradient_norm", tf.norm(g))
+          tf.summary.scalar(v.name.replace(':0','_') + "gradient_norm", tf.norm(g))
       tf.summary.scalar("global_gradient_norm", glob_grad_norm)
   
       
@@ -390,9 +399,9 @@ def clip_and_step(optimizer, loss, params):
   grads_and_vars = optimizer.compute_gradients(loss)
   grads, varis = zip(*grads_and_vars)
   
-  if params.get('model_type') == 'student':
-        
-    grads = [grad * tf.cast(tf.pow(params.get('temperature'),2),tf.float32) for grad in grads ]
+#  if params.get('model_type') == 'student':
+#        
+#    grads = [grad * tf.cast(tf.pow(params.get('temperature'),2),tf.float32) for grad in grads ]
       
   if params.get('clipping'):
       grads, global_norm = tf.clip_by_global_norm(grads, params.get('clipping'),
