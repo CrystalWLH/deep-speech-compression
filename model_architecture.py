@@ -6,9 +6,6 @@ Created on Sun May  6 16:01:21 2018
 @author: Samuele Garda
 """
 
-#TODO
-# ADD BN?
-
 import tensorflow as tf
 
 
@@ -43,7 +40,7 @@ def gated_conv(inputs,filters, kernel_size, strides, activation,padding, data_fo
   return conv
   
   
-def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts, activation, data_format, train):
+def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts, activation, data_format,batchnorm,train):
   """
   Apply sequence of 1D convolution operation.
   
@@ -71,13 +68,20 @@ def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts
     with tf.variable_scope(layer_name):
       conv = conv_op(inputs = prev_layer,filters = filters[layer],
                      kernel_size = widths[layer], strides = strides[layer],
-                     activation = activation,padding = 'same',
+                     activation = None if batchnorm else activation,
+                     use_bias= not batchnorm,padding = 'same',
                      data_format = data_format, name = conv_type)
       
-      prev_layer = conv
       
+      if batchnorm:
+        print("adding batch norm")
+        conv = tf.layers.batch_normalization(conv, axis=1 if data_format == "channels_first" else -1,
+                                             training=train, name="bn")
+        
+      conv = activation(conv)
+      prev_layer = conv
       if dropouts[layer] != 0:
-        prev_layer = tf.layers.dropout(prev_layer, rate=dropouts[layer], training=train, name="dropout")
+        prev_layer = tf.layers.dropout(prev_layer, rate=dropouts[layer], training=train, name="dropout")  
       
       tf.summary.histogram(layer_name, prev_layer)
       
@@ -155,6 +159,7 @@ def teacher_model_function(features, labels, mode, params):
                             activation = params.get('activation'),
                             data_format = params.get('data_format'),
                             dropouts = params.get('dropouts'),
+                            batchnorm = params.get('bn'),
                             train = mode == tf.estimator.ModeKeys.TRAIN)
     
     logits = tf.layers.conv1d(inputs = pre_out, filters = params.get('vocab_size'), kernel_size = 1,
@@ -276,14 +281,15 @@ def student_model_function(features, labels, mode, params):
         
   with tf.variable_scope("model"):
     
-    pre_out = convolutional_sequence(inputs = audio_features, conv_type = params.get('conv_type'),
+    pre_out = convolutional_sequence(inputs = features, conv_type = params.get('conv_type'),
                             filters = params.get('filters'),
                             widths = params.get('widths'),
                             strides = params.get('strides'),
                             activation = params.get('activation'),
                             data_format = params.get('data_format'),
                             dropouts = params.get('dropouts'),
-                            train =  True)
+                            batchnorm = params.get('bn'),
+                            train = mode == tf.estimator.ModeKeys.TRAIN)
     
     logits = tf.layers.conv1d(inputs = pre_out, filters = params.get('vocab_size'), kernel_size = 1,
                                   strides= 1, activation=None,

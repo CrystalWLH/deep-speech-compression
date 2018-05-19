@@ -33,11 +33,23 @@ def parse_arguments():
   return args
 
 
-def complete_student_name(env_params,params):
+def complete_name(env_params,params):
   
-  model_name = "{}_teach{}_temp{}_alpha{}_{}l".format(env_params.get('save_model'),
-                env_params.get('teacher_dir').split(os.sep)[-1],
-                params.get('temperature'),params.get('alpha'), len(params.get('filters')))
+  act_map = {tf.nn.relu : 'relu', tf.nn.elu : 'elu'}
+  
+  if env_params.get('model_type') == 'teacher':
+    
+    model_name = "{}_bn{}_bs{}_lr{}_{}_c{}_{}{}_do{}".format(env_params.get('save_model'),int(params.get('bn')),env_params.get('batch_size'),
+                  params.get('adam_lr'),act_map[params.get('activation')],params.get('clipping'),params.get('conv_type'),
+                  len(params.get('filters')),params.get('dropouts')[-1])
+  
+  if env_params.get('model_type') == 'student':
+  
+    model_name = "{}_bn{}_bs{}_lr{}_{}_c{}_{}{}_do{}_{}_t{}_a{}".format(env_params.get('save_model'),int(params.get('bn')),env_params.get('batch_size'),
+                  params.get('adam_lr'),act_map[params.get('activation')],params.get('clipping'),params.get('conv_type'),
+                  len(params.get('filters')),params.get('dropouts')[-1],env_params.get('teacher_dir').split(os.sep)[-1],
+                  params.get('temperature'),params.get('alpha'))
+    
   
   return model_name
   
@@ -113,7 +125,8 @@ if __name__ == '__main__':
   if env_params.get('model_type') == 'teacher':
   
     estimator = tf.estimator.Estimator(model_fn=teacher_model_function, params=params,
-                                     model_dir= env_params.get('save_model'),config=config)
+                                     model_dir= complete_name(env_params,params),
+                                     config=config)
     
     if args.mode == "train":
       
@@ -158,7 +171,7 @@ if __name__ == '__main__':
   elif env_params.get('model_type') == 'student':
     
     estimator = tf.estimator.Estimator(model_fn=student_model_function, params=params,
-                                       model_dir= complete_student_name(env_params,params),
+                                       model_dir= complete_name(env_params,params),
                                        config=config)
     
     if args.mode == 'train':
