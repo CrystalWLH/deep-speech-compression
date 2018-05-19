@@ -25,15 +25,25 @@ def parse_arguments():
   """
   
   parser = argparse.ArgumentParser(description='Run experiments for Deep ASR model compression through Teacher-Student training')
-  parser.add_argument('-c', '--config', required=True, help='Experiment configuration file')
   parser.add_argument('-m', '--mode', required=True, choices = ('train','eval','predict'), 
                       help='Mode for experiment. One of :(`train`,`eval`,`predict`) ')
+  parser.add_argument('--conf', required=True, help='Experiment configuration file')
   args = parser.parse_args()
   
   return args
 
 
 def complete_name(env_params,params):
+  """
+  Create name excplicting network hyperparameters.
+  
+  :param:
+    env_params (dict) : parameters for experiment run
+    params (dict) : network parameters
+    
+  :return:
+    model_name (str) : explicit model name
+  """
   
   act_map = {tf.nn.relu : 'relu', tf.nn.elu : 'elu'}
   
@@ -55,6 +65,16 @@ def complete_name(env_params,params):
   
 
 def config2params(config):
+  """
+  Create configuration varibales both for experiment run and model.
+  
+  :params:
+    config (str) : path to configuration file
+  :return:
+    env_params (dict) : parameters for experiment run
+    params (dict) : network parameters
+    
+  """
   
   configuration = ConfigParser(allow_no_value=False)
   configuration.read(config)
@@ -115,7 +135,7 @@ if __name__ == '__main__':
   
   args = parse_arguments()
   
-  env_params,params = config2params(args.config)
+  env_params,params = config2params(args.conf)
     
   config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1, save_checkpoints_steps=20)
   
@@ -173,6 +193,7 @@ if __name__ == '__main__':
     estimator = tf.estimator.Estimator(model_fn=student_model_function, params=params,
                                        model_dir= complete_name(env_params,params),
                                        config=config)
+    
     
     if args.mode == 'train':
       

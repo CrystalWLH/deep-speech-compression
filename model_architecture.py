@@ -52,6 +52,7 @@ def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts
     strides (list) : sequence of strides
     activation (tf function) : activation function
     data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels) 
+    batchnorm (bool) : use batch normalization
     train (bool) : wheter in train mode or not
     
   :return:
@@ -74,7 +75,6 @@ def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts
       
       
       if batchnorm:
-        print("adding batch norm")
         conv = tf.layers.batch_normalization(conv, axis=1 if data_format == "channels_first" else -1,
                                              training=train, name="bn")
         
@@ -86,6 +86,34 @@ def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts
       tf.summary.histogram(layer_name, prev_layer)
       
   return prev_layer
+
+def clip_and_step(optimizer, loss, clipping):
+  """
+  Helper to compute/apply gradients with clipping.
+  
+  Parameters:
+  optimizer: Subclass of tf.train.Optimizer (e.g. GradientDescent or Adam).
+  loss: Scalar loss tensor.
+  clipping: Threshold to use for clipping.
+  
+  Returns:
+  The train op.
+  List of gradient, variable tuples, where gradients have been clipped.
+  Global norm before clipping.
+  """
+  grads_and_vars = optimizer.compute_gradients(loss)
+  grads, varis = zip(*grads_and_vars)
+      
+  if clipping:
+      grads, global_norm = tf.clip_by_global_norm(grads, clipping,
+                                                  name="gradient_clipping")
+  else:
+      global_norm = tf.global_norm(grads, name="gradient_norm")
+  grads_and_vars = list(zip(grads, varis))  # list call is apparently vital!!
+  train_op = optimizer.apply_gradients(grads_and_vars,
+                                       global_step=tf.train.get_global_step(),
+                                       name="train_step")
+  return train_op, grads_and_vars, global_norm    
 
 def length(batch, data_format):
   """
@@ -128,6 +156,11 @@ def teacher_model_function(features, labels, mode, params):
       - filters (list) : sequence of filters
       - widths (list) : sequence of kernel sizes
       - strides (list) : sequence of strides
+      - dropouts (list) : sequence of dropouts values
+      - bn (bool) : use batch normalization
+      - adam_lr (float) : adam learning rate
+      - adam_eps (float) : adam epsilon
+      - clipping (int) : clipping threshold
       
   :return:
     specification (tf.estimator.EstimatorSpec)
@@ -215,12 +248,12 @@ def teacher_model_function(features, labels, mode, params):
     
     with tf.variable_scope("optimizer"):
       optimizer = tf.train.AdamOptimizer(learning_rate = params.get('adam_lr'), epsilon = params.get('adam_eps'))
-      if params.get('use_bn'):
+      if params.get('bn'):
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
-          train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
+          train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params.get('clipping'))
       else:
-        train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
+        train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params.get('clipping'))
       
     with tf.name_scope("visualization"):
       for g, v in grads_and_vars:
@@ -258,6 +291,13 @@ def student_model_function(features, labels, mode, params):
       - filters (list) : sequence of filters
       - widths (list) : sequence of kernel sizes
       - strides (list) : sequence of strides
+      - dropouts (list) : sequence of dropouts values
+      - bn (bool) : use batch normalization
+      - adam_lr (float) : adam learning rate
+      - adam_eps (float) : adam epsilon
+      - clipping (int) : clipping threshold
+      - temperature (int) : distillation temperature
+      - alpha (float) : parameters loss weighted average
       
   :return:
     specification (tf.estimator.EstimatorSpec)
@@ -281,7 +321,7 @@ def student_model_function(features, labels, mode, params):
         
   with tf.variable_scope("model"):
     
-    pre_out = convolutional_sequence(inputs = features, conv_type = params.get('conv_type'),
+    pre_out = convolutional_sequence(inputs = audio_features, conv_type = params.get('conv_type'),
                             filters = params.get('filters'),
                             widths = params.get('widths'),
                             strides = params.get('strides'),
@@ -327,6 +367,9 @@ def student_model_function(features, labels, mode, params):
       
     return tf.estimator.EstimatorSpec(mode = mode, predictions=pred)
   
+  
+  #"Since the magnitudes of the gradients produced by the soft targets scale as 1/T^2
+  #it is important to multiply them by T^2 when using both hard and soft targets"  
     
   with tf.name_scope('ctc_loss'):
   
@@ -335,7 +378,10 @@ def student_model_function(features, labels, mode, params):
     batches_ctc_loss = tf.nn.ctc_loss(labels = sparse_labels,
                                       inputs =  logits, 
                                       sequence_length = seqs_len)
-    ctc_loss = tf.reduce_mean(batches_ctc_loss)
+    
+    # see comment above
+    ctc_loss =  tf.reduce_mean(batches_ctc_loss) * tf.cast(tf.square(params.get('temperature')), tf.float32)
+
     tf.summary.scalar('ctc_loss',ctc_loss)
       
   with tf.name_scope('distillation_loss'):
@@ -349,6 +395,7 @@ def student_model_function(features, labels, mode, params):
                 
     xent_soft_targets = tf.reduce_mean(-tf.reduce_sum(st_fl * tf.log(logits_fl), axis=1))
     
+    # see comment above
     xent_st = tf.cast(tf.square(params.get('temperature')), tf.float32) * xent_soft_targets
     
     tf.summary.scalar('soft_target_xent', xent_st)
@@ -361,12 +408,12 @@ def student_model_function(features, labels, mode, params):
     
     with tf.variable_scope("optimizer"):
       optimizer = tf.train.AdamOptimizer(learning_rate = params.get('adam_lr'), epsilon = params.get('adam_eps'))
-      if params.get('use_bn'):
+      if params.get('bn'):
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
-          train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
+          train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params.get('clipping'))
       else:
-        train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params)
+        train_op, grads_and_vars, glob_grad_norm = clip_and_step(optimizer, loss, params.get('clipping'))
         
     with tf.name_scope("visualization"):
       for g, v in grads_and_vars:
@@ -386,39 +433,3 @@ def student_model_function(features, labels, mode, params):
   metrics = {"ler": (mean_ler, op)}
   
   return tf.estimator.EstimatorSpec(mode=mode, loss = loss, eval_metric_ops=metrics)
-            
-    
-def clip_and_step(optimizer, loss, params):
-  """
-  Helper to compute/apply gradients with clipping.
-  
-  Parameters:
-  optimizer: Subclass of tf.train.Optimizer (e.g. GradientDescent or Adam).
-  loss: Scalar loss tensor.
-  clipping: Threshold to use for clipping.
-  
-  Returns:
-  The train op.
-  List of gradient, variable tuples, where gradients have been clipped.
-  Global norm before clipping.
-  """
-  grads_and_vars = optimizer.compute_gradients(loss)
-  grads, varis = zip(*grads_and_vars)
-      
-  if params.get('clipping'):
-      grads, global_norm = tf.clip_by_global_norm(grads, params.get('clipping'),
-                                                  name="gradient_clipping")
-  else:
-      global_norm = tf.global_norm(grads, name="gradient_norm")
-  grads_and_vars = list(zip(grads, varis))  # list call is apparently vital!!
-  train_op = optimizer.apply_gradients(grads_and_vars,
-                                       global_step=tf.train.get_global_step(),
-                                       name="train_step")
-  return train_op, grads_and_vars, global_norm    
-    
-  
-    
-    
-    
-  
-  
