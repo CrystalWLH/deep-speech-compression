@@ -32,6 +32,14 @@ def parse_args():
 
 
 def tfrecord_write_ex_logits(writer,logits,shape):
+  """
+  Write example to TFRecordWriter.
+  
+  :param:
+    writer (tf.python_io.TFRecordWriter) : file where examples will be stored
+    logits (np.ndarry) : audio
+    shape (list) : shape of logits
+  """
   
   example = tf.train.Example( features=tf.train.Features(
       feature={'logits': _float_feature(logits),

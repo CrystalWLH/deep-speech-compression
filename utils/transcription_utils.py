@@ -15,11 +15,26 @@ logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(messag
 
 
 def decoder_dict(char2idx):
+  """
+  Create lookup index to character for decoding predictions.
+  
+  :param:
+    char2idx (dict) : lookup char-idx
+  :return:
+    inverse of `char2idx`
+  """
   
   return {idx : char for char,idx in char2idx.items()}
 
 
 def decode_sequence(seq, idx2char):
+  """
+  Decode sequence of indices to sequence of characters.
+  
+  :param:
+    seq (list) : list of ints indices
+    idx2char (dict) : idx-char lookup
+  """
   
   return [idx2char.get(c) for c in seq]
 
@@ -30,6 +45,9 @@ def load_pickle(file_path):
   :param:
     char_enc (dict) : character lookup
     path (str) : path where to store item
+    
+  :return:
+    item : whathever was saved in the file
   """
   path = Path(file_path)
   

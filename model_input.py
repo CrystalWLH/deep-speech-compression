@@ -13,9 +13,10 @@ import tensorflow as tf
 
 def load_teacher_logits(tfrecord_logits):
   """
-  Create dataset with containing teacher logits.
+  Create dataset containing teacher logits.
   
   :param:
+    tfrecord_logits (str) : path to tfrecord file
     
   :return:
     dataset_logits (tf.data.Dataset) : dataset containing logits
@@ -33,14 +34,15 @@ def student_input_func(tfrecord_path,tfrecord_logits,vocab_size,input_channels,e
   Create input function for student network. Contains audio features and logits of teacher network.
   
   :param:
-    tfrecord_path (str) : path to tfrecord file.
-    split (str) : part of the dataset. Choiches = (`train`,`dev`,`test`)
+    tfrecord_path (str) : path to tfrecord file
+    tfrecord_logits (str) : path to tfrecord file containing teacher logits
+    vocab_size (int) : size of vocabulary
+    input_channels (int) : number of input channels
+    epochs (int) : number of epochs before throwing OutOfRange
+    mode (str) : part of the dataset. Choiches = (`train`,`dev`,`test`)
     batch_size (int) : size of mini-batches
-    input_fn (function) : input (training) function for teacher model
-    teacher_model_function (function) : estimator model_fn for teacher network
-    params (dict) : parameters of teacher model
-    model_dir (path) : path to teacher network checkpoint
-    
+  :return:
+    features,labels (Iteretor.get_next()) : features and labels for training      
   """
   
   with tf.variable_scope('input'):
@@ -80,9 +82,7 @@ def load_dataset(tfrecord_path):
   dataset = tf.data.TFRecordDataset(tfrecord_path)
   
   dataset = dataset.map(parse_tfrecord_example)
-  
-#  dataset = dataset.shuffle(buffer_size= 100, seed = 42)
-  
+    
   return dataset
 
 def parse_tfrecord_example(proto):
@@ -123,6 +123,15 @@ def parse_tfrecord_example(proto):
 
 
 def parse_tfrecord_logit(proto):
+  """
+  Parse logits stored in tfrecord file.
+  
+  :param:
+    proto (tf.Tensor) : element stored in tf.data.TFRecordDataset
+  :return:
+    dense_logits (tf.Tensor) : teacher logits for training example
+    
+  """
   
   features = {"logits": tf.VarLenFeature(tf.float32),
               "shape": tf.FixedLenFeature((2,), tf.int64)}
@@ -145,9 +154,10 @@ def teacher_input_func(tfrecord_path,input_channels, mode, epochs, batch_size):
   Create dataset instance from tfrecord file. It prefetches mini-batch. If is train split dataset is repeated.
   
   :param:
-    tfrecord_path (str) : path to tfrecord file.
-    split (str) : part of the dataset. Choiches = (`train`,`dev`,`test`)
-    shuffle (int) : buffer size for shuffle operation
+    tfrecord_path (str) : path to tfrecord file
+    input_channels (int) : number of input channels
+    mode (str) : part of the dataset. Choiches = (`train`,`dev`,`test`)
+    epochs (int) : number of epochs before throwing OutOfRange
     batch_size (int) : size of mini-batches
     
   :return:

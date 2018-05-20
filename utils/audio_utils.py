@@ -16,7 +16,7 @@ logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(messag
 
 def normalize(audio):
   """
-  Normalize audio signal. Mean 0 std 1
+  Normalize audio signal to Mean 0 std 1
   
   :param:
     audio (np.ndarray) : audio examples
@@ -42,7 +42,7 @@ def get_duration_in_s(audio, sample_rate):
   
   return len(audio) / sample_rate
 
-def load_raw_audio(audio_path , sample_rate):
+def load_wave(audio_path , sample_rate):
   """
   Load single audio file from path.
   
@@ -60,19 +60,20 @@ def load_raw_audio(audio_path , sample_rate):
     pass
   
   
-def wave2mfccs(audio_path, sample_rate = 16000, n_mfcc=13, n_fft=512, hop_length=160):
+def load_mfccs(audio_path, sample_rate = 16000, n_mfcc=13, n_fft=512, hop_length=160):
   """
-  Calculate mfcc coefficients from the given raw audio data
-  Args:
-    audio_data: numpyarray of raw audio wave
-    samplerate: the sample rate of the `audio_data`
-    n_mfcc: the number of coefficients to generate
-    n_fft: the window size of the fft
-    hop_length: the hop length for the window
-  Returns: the mfcc coefficients in the form [time, coefficients]
+  Load audio and calculate mfcc coefficients from the given raw audio data
+  params:
+    audio_data (np.ndarray): raw audio wave
+    sample_rate (int) : the sample rate of the audio
+    n_mfcc (int) : the number of coefficients to generate
+    n_fft (int) : the window size of the fft
+    hop_length (int): the hop length for the window
+  return:
+    mfcc (np.ndarray) : the mfcc coefficients in the form [coefficients, time ]
   """
   
-  audio = load_raw_audio(audio_path = audio_path, sample_rate = sample_rate)
+  audio = load_wave(audio_path = audio_path, sample_rate = sample_rate)
   
   mfcc = librosa.feature.mfcc(y = audio, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft, hop_length=hop_length)
 
@@ -86,12 +87,13 @@ def wave2mfccs(audio_path, sample_rate = 16000, n_mfcc=13, n_fft=512, hop_length
   return mfcc
   
 
-def wave2power_spectrogram(audio_path, sample_rate, n_fft=512, hop_length=160):
+def load_pow_spec(audio_path, sample_rate, n_fft=512, hop_length=160):
   """
-  Compute power spectrogram from wave audio.
+  Load audio and compute power spectrogram from wave audio.
   
   :param:
     audio (np.ndarray) : audio examples (wave)
+    sample_rate (int) : the sample rate of the audio
     fft_window (int) : window for FFT
     hop_length (int) : number audio of frames between FFT columns
   :return:
@@ -99,7 +101,7 @@ def wave2power_spectrogram(audio_path, sample_rate, n_fft=512, hop_length=160):
     
   """
   
-  audio = load_raw_audio(audio_path = audio_path, sample_rate = sample_rate)
+  audio = load_wave(audio_path = audio_path, sample_rate = sample_rate)
   
   spectogram = librosa.stft(y=audio, n_fft= n_fft, hop_length= hop_length)
   
@@ -108,10 +110,7 @@ def wave2power_spectrogram(audio_path, sample_rate, n_fft=512, hop_length=160):
 
 def get_audio(audio_path, sample_rate = 16000, form = 'mfccs', n_fft = 400, hop_length = 160, n_mfcc = 40):
   """
-  Wrapper function to load audio in desired form. First raw audio is loaded then if param `form` transformations ops
-  are performed (to amplitude,power or mel spectrogram). 
-  
-  Specific arguments are passed via `kwargs`
+  Wrapper function to load audio in desired form.  
   
   :param:
     audio_path (str) : path to audio
@@ -123,26 +122,26 @@ def get_audio(audio_path, sample_rate = 16000, form = 'mfccs', n_fft = 400, hop_
   
   if form == 'raw':
     
-    audio = load_raw_audio(audio_path = audio_path, sample_rate = sample_rate)
+    audio = load_wave(audio_path = audio_path, sample_rate = sample_rate)
   
   elif form == 'power':
   
-   audio = wave2power_spectrogram(audio_path = audio_path,sample_rate = sample_rate,n_fft = n_fft, hop_length = hop_length)
+   audio = load_pow_spec(audio_path = audio_path,sample_rate = sample_rate,n_fft = n_fft, hop_length = hop_length)
     
   elif form == 'mfccs':
     
-    audio = wave2mfccs(audio_path = audio_path,sample_rate = sample_rate,n_fft = n_fft, hop_length = hop_length, n_mfcc = n_mfcc)
+    audio = load_mfccs(audio_path = audio_path,sample_rate = sample_rate,n_fft = n_fft, hop_length = hop_length, n_mfcc = n_mfcc)
                                  
   return audio
 
 
 if __name__ == "__main__":
   
-  test_raw = ('LibriSpeech/dev-other/6455/66379/6455-66379-0011.flac', 16000, 'raw', 512, 160, 13)
+  test_raw = ('LibriSpeech/dev-clean/6455/66379/6455-66379-0011.flac', 16000, 'raw', 512, 160, 13)
   
-  test_spec = ('LibriSpeech/dev-other/6455/66379/6455-66379-0011.flac', 16000, 'power', 512, 160, 13)
+  test_spec = ('LibriSpeech/dev-clean/6455/66379/6455-66379-0011.flac', 16000, 'power', 512, 160, 13)
   
-  test_mfccs = ('LibriSpeech/dev-other/6455/66379/6455-66379-0011.flac', 16000, 'mfccs', 512, 160, 13)
+  test_mfccs = ('LibriSpeech/dev-clean/6455/66379/6455-66379-0011.flac', 16000, 'mfccs', 512, 160, 13)
   
   raw = get_audio(*test_raw)
   

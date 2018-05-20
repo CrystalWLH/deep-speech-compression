@@ -162,8 +162,7 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
 
 def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, hop_length, n_mfcc):
   """
-  Write data loaded with `load_data_by_split` to a tf record file. If form is not specified raw audio are loaded. Otherwise `kwargs` passed
-  to transformation function.
+  Write data loaded with `load_data_by_split` to a tf record file. If form is not specified raw audio are loaded. 
   Raw audio expanded to 2D for compatibility with input to Convolution operations.
   
   :param:
@@ -171,7 +170,10 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
     split (str) : part of dataset
     data (list) : list of AudioExample objects
     sample_rate (int) : rate at which audio was sampled when loading
-    form (str) : representation. Choices = (`ampl`,`power`,`mel`)
+    form (str) : representation. Choices = (`raw`,`power`,`mfccs`)
+    n_mfcc (int) : the number of coefficients for mfccs 
+    n_fft (int) : the window size of the fft
+    hop_length (int): the hop length for the window
     
   """
   
