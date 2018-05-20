@@ -366,10 +366,7 @@ def student_model_function(features, labels, mode, params):
       pred = {'decoding' : dense_decoded, 'log_prob' : log_prob}
       
     return tf.estimator.EstimatorSpec(mode = mode, predictions=pred)
-  
-  
-  #"Since the magnitudes of the gradients produced by the soft targets scale as 1/T^2
-  #it is important to multiply them by T^2 when using both hard and soft targets"  
+
     
   with tf.name_scope('ctc_loss'):
   
@@ -380,7 +377,7 @@ def student_model_function(features, labels, mode, params):
                                       sequence_length = seqs_len)
     
     # see comment above
-    ctc_loss =  tf.reduce_mean(batches_ctc_loss) * tf.cast(tf.square(params.get('temperature')), tf.float32)
+    ctc_loss =  tf.reduce_mean(batches_ctc_loss)
 
     tf.summary.scalar('ctc_loss',ctc_loss)
       
@@ -395,7 +392,8 @@ def student_model_function(features, labels, mode, params):
                 
     xent_soft_targets = tf.reduce_mean(-tf.reduce_sum(st_fl * tf.log(logits_fl), axis=1))
     
-    # see comment above
+    #"Since the magnitudes of the gradients produced by the soft targets scale as 1/T^2
+    #it is important to multiply them by T^2 when using both hard and soft targets"  
     xent_st = tf.cast(tf.square(params.get('temperature')), tf.float32) * xent_soft_targets
     
     tf.summary.scalar('soft_target_xent', xent_st)
