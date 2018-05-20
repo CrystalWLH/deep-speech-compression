@@ -394,7 +394,7 @@ def student_model_function(features, labels, mode, params):
     
     #"Since the magnitudes of the gradients produced by the soft targets scale as 1/T^2
     #it is important to multiply them by T^2 when using both hard and soft targets"  
-    xent_st = tf.cast(tf.square(params.get('temperature')), tf.float32) * xent_soft_targets
+    xent_st = xent_soft_targets  # * tf.cast(tf.square(params.get('temperature')), tf.float32) 
     
     tf.summary.scalar('soft_target_xent', xent_st)
       

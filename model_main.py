@@ -49,16 +49,16 @@ def complete_name(env_params,params):
   
   if env_params.get('model_type') == 'teacher':
     
-    model_name = "{}_bn{}_bs{}_lr{}_{}_c{}_{}{}_do{}".format(env_params.get('save_model'),int(params.get('bn')),env_params.get('batch_size'),
-                  params.get('adam_lr'),act_map[params.get('activation')],params.get('clipping'),params.get('conv_type'),
+    model_name = "{}_bn{}_bs{}_{}_c{}_{}{}_do{}".format(env_params.get('save_model'),int(params.get('bn')),env_params.get('batch_size'),
+                  act_map[params.get('activation')],params.get('clipping'),params.get('conv_type'),
                   len(params.get('filters')),params.get('dropouts')[-1])
   
   if env_params.get('model_type') == 'student':
   
-    model_name = "{}_bn{}_bs{}_lr{}_{}_c{}_{}{}_do{}_{}_t{}_a{}".format(env_params.get('save_model'),int(params.get('bn')),env_params.get('batch_size'),
-                  params.get('adam_lr'),act_map[params.get('activation')],params.get('clipping'),params.get('conv_type'),
-                  len(params.get('filters')),params.get('dropouts')[-1],env_params.get('teacher_dir').split(os.sep)[-1],
-                  params.get('temperature'),params.get('alpha'))
+    model_name = "{}_bn{}_bs{}_{}_c{}_{}{}_do{}_t{}".format(env_params.get('save_model'),int(params.get('bn')),env_params.get('batch_size'),
+                  act_map[params.get('activation')],params.get('clipping'),params.get('conv_type'),
+                  len(params.get('filters')),params.get('dropouts')[-1],
+                  params.get('temperature'))
     
   
   return model_name
@@ -102,8 +102,6 @@ def config2params(config):
   
   if model_type == 'STUDENT':
   
-    env_params['teacher_config'] = configuration['FILES'].get('teacher_config')
-    env_params['teacher_dir'] = configuration['FILES'].get('teacher_dir')
     env_params['teacher_logits'] = configuration['FILES'].get('teacher_logits')
     params['temperature'] = configuration['TRAIN'].getint('temperature', 3)
     params['alpha'] = configuration['TRAIN'].getfloat('alpha', 0.3)

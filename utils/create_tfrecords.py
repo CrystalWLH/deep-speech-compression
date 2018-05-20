@@ -146,16 +146,15 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
     labels = id2encoded_transc[transcription_index]
           
     data.append(AudioExample(str(audio_file),labels))
-    
-    if (idx%1000) == 0:
-      
-      logger.info("Loaded {} examples".format(idx))
       
     if limit and idx >= limit:
       
       logger.info("Successfully loaded {} audios examples".format(limit))
       
       break
+  
+  if not limit:  
+    logger.info("Successfully loaded {} audios examples".format(len(audio_paths)))
   
   return data
 
@@ -204,7 +203,7 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
     
     if idx == 1:
     
-      logger.info("Number of input channels is : {}".format(audio_shape))
+      logger.info("Number of input channels is : {}".format(audio_shape[0]))
                     
     audio = audio.flatten()
       

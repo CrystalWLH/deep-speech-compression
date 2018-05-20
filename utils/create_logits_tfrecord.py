@@ -12,7 +12,7 @@ import numpy as np
 import tensorflow as tf
 from model_input import teacher_input_func
 from model_architecture import teacher_model_function
-from model_main import config2params
+from model_main import config2params,complete_name
 from utils.create_tfrecords import create_tfrecords_folder,_float_feature,_int64_feature
 
 logger = logging.getLogger(__name__)
@@ -25,8 +25,8 @@ def parse_args():
   """
   parser = argparse.ArgumentParser(description='Create tfrecord files for teacher logits')
   parser.add_argument('-p', '--path', default = './tfrecords_data', type = str, help='Folder where to store logits')
-  parser.add_argument('-m', '--model-name', required=True, type = str, help='Identifier for which model produced the logits')
-  parser.add_argument('-c', '--config', required=True, type = str, help='Path to teacher model configuration')
+  parser.add_argument('-n', '--model-name', required=True, type = str, help='Identifier for which model produced the logits')
+  parser.add_argument('--conf', required=True, type = str, help='Path to teacher model configuration')
 
   return parser.parse_args()
 
@@ -52,7 +52,7 @@ if __name__  == "__main__":
   
   args = parse_args()
 
-  env_teacher, params_teacher = config2params(args.config)
+  env_teacher, params_teacher = config2params(args.conf)
   
   
   def input_fn():
@@ -63,7 +63,7 @@ if __name__  == "__main__":
                               batch_size = 1 )
   
   estimator = tf.estimator.Estimator(model_fn=teacher_model_function, params=params_teacher,
-                                       model_dir= env_teacher.get('save_model'))
+                                       model_dir= complete_name(env_teacher,params_teacher))
   
   
   out_path = create_tfrecords_folder(args.path)
