@@ -219,13 +219,15 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
   logger.info("Completed writing examples in tfrecords format at `{}`".format(out_file))
   
 if __name__ == "__main__":
-  
+    
   args = parse_args()
     
   create_tfrecords_folder(args.out)
   
   chars_set, ids2trans = create_vocab_id2transcript(args.data)
   
+  chars = [c for ids,trans in ids2trans.items() for c in trans]
+    
   if args.loss == 'ctc':
     
     chars2ids = get_ctc_char2ids(chars_set)
@@ -237,6 +239,8 @@ if __name__ == "__main__":
   save_pickle(chars2ids, args.out, 'vocab.pkl')
       
   encoded_transcriptions = get_id2encoded_transcriptions(ids2trans, chars2ids)
+  
+  
   
   for split in args.splits.split(','):
     

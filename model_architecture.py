@@ -365,35 +365,44 @@ def student_model_function(features, labels, mode, params):
                                       inputs =  logits, 
                                       sequence_length = seqs_len)
     
-    # see comment above
     ctc_loss =  tf.reduce_mean(batches_ctc_loss)
-
+    
     tf.summary.scalar('ctc_loss',ctc_loss)
       
   with tf.name_scope('distillation_loss'):
     
-    # right axis?
-    softmaxed_logits = tf.nn.softmax(logits, axis = 2)
-    soft_targets = tf.nn.softmax(teacher_logits / params.get('temperature'), axis = 2)
+    temperature = params.get('temperature')
     
-    logits_fl = tf.reshape(softmaxed_logits, [tf.shape(logits)[1],-1])
+    soft_targets = tf.nn.softmax(teacher_logits / temperature, axis = 2)
+    soft_logits = tf.nn.softmax(logits / temperature, axis = 2)
+    
+    logits_fl = tf.reshape(soft_logits, [tf.shape(logits)[1],-1])
     st_fl = tf.reshape(soft_targets,[tf.shape(logits)[1],-1])
     
-    with tf.variable_scope("shape_check"):
-      tf.assert_equal(tf.shape(logits_fl),tf.shape(st_fl))
-                    
     xent_soft_targets = tf.reduce_mean(-tf.reduce_sum(st_fl * tf.log(logits_fl), axis=1))
     
     tf.summary.scalar('st_xent', xent_soft_targets)
     
-    #"Since the magnitudes of the gradients produced by the soft targets scale as 1/T^2
+    # right axis?
+#    softmaxed_logits = tf.nn.softmax(logits, axis = 2)
+#    soft_targets = tf.nn.softmax(teacher_logits / params.get('temperature'), axis = 2)
+#    
+#    with tf.variable_scope("shape_check"):
+#      tf.assert_equal(tf.shape(logits_fl),tf.shape(st_fl))
+#                    
+#    xent_soft_targets = 
+#    
+#    tf.summary.scalar('st_xent', xent_soft_targets)
+#    
+#    "Since the magnitudes of the gradients produced by the soft targets scale as 1/T^2
     #it is important to multiply them by T^2 when using both hard and soft targets"  
 #    xent_st = xent_soft_targets  * tf.cast(tf.square(params.get('temperature')), tf.float32) 
 #    tf.summary.scalar('squared_st_xent', xent_st)
       
   with tf.name_scope('total_loss'):
     alpha = params.get('alpha')
-    loss = (1 - alpha) * ctc_loss +  (alpha * xent_soft_targets)
+    sq_temper = tf.cast(tf.square(temperature),tf.float32)
+    loss =  ((1 - alpha) * ctc_loss) * sq_temper  +  ((alpha * xent_soft_targets))  * sq_temper
     tf.summary.scalar('total_loss', loss)
     
   
