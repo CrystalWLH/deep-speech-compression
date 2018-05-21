@@ -379,11 +379,9 @@ def student_model_function(features, labels, mode, params):
     logits_fl = tf.reshape(softmaxed_logits, [tf.shape(logits)[1],-1])
     st_fl = tf.reshape(soft_targets,[tf.shape(logits)[1],-1])
     
-    with tf.variable_scope("sanity_check"):
+    with tf.variable_scope("shape_check"):
       tf.assert_equal(tf.shape(logits_fl),tf.shape(st_fl))
-                
-#    xent_soft_targets = tf.nn.softmax_cross_entropy_with_logits_v2(labels = st_fl, logits = logits_fl)
-    
+                    
     xent_soft_targets = tf.reduce_mean(-tf.reduce_sum(st_fl * tf.log(logits_fl), axis=1))
     
     tf.summary.scalar('st_xent', xent_soft_targets)
@@ -391,7 +389,6 @@ def student_model_function(features, labels, mode, params):
     #"Since the magnitudes of the gradients produced by the soft targets scale as 1/T^2
     #it is important to multiply them by T^2 when using both hard and soft targets"  
 #    xent_st = xent_soft_targets  * tf.cast(tf.square(params.get('temperature')), tf.float32) 
-#    
 #    tf.summary.scalar('squared_st_xent', xent_st)
       
   with tf.name_scope('total_loss'):
