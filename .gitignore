@@ -7,8 +7,7 @@ __pycache__/
 *.so
 
 # external resources
-LibriSpeech/
-tfrecords_data/
+data/
 models/
 
 # Distribution / packaging

@@ -6,7 +6,6 @@ Created on Sun May  6 16:12:41 2018
 @author: Samuele Garda
 """
 
-import os
 import argparse
 import logging
 from configparser import ConfigParser

@@ -103,7 +103,7 @@ def clip_and_step(optimizer, loss, clipping):
   """
   grads_and_vars = optimizer.compute_gradients(loss)
   grads, varis = zip(*grads_and_vars)
-      
+        
   if clipping:
       grads, global_norm = tf.clip_by_global_norm(grads, clipping,
                                                   name="gradient_clipping")
@@ -117,8 +117,8 @@ def clip_and_step(optimizer, loss, clipping):
 
 def length(batch, data_format):
   """
-  Get length of sequences in a batch. Expects inputs in `channels_last` format (batch, max_length, channels). If `channels_first` 
-  batch is transposed.
+  Get length of sequences in a batch of logits. Since logits are in (max_length,batch,channles) 
+  they are transposed to `channels_last` format (batch, max_length, channels). If `channels_first`.
   
   :param:
     batch (tf.Tensor) : 3D input features 
@@ -128,10 +128,9 @@ def length(batch, data_format):
     length (tf.Tensor) : 1D vector of sequence lengths
   """
   
-  with tf.variable_scope("sequence_lengths"):
-    
-    if data_format == 'channels_first':
-      batch = tf.transpose(batch, (0,2,1))
+  with tf.variable_scope('sequence_length'):
+  
+    batch = tf.transpose(batch, (1,0,2))
       
     used = tf.sign(tf.reduce_max(tf.abs(batch), 2))
     length = tf.reduce_sum(used, 1)
@@ -171,17 +170,6 @@ def teacher_model_function(features, labels, mode, params):
     if params.get('data_format') == "channels_last":
       
       features = tf.transpose(features, (0, 2, 1))
-      
-  seqs_len = length(features, data_format = params.get('data_format'))
-  
-  
-  with tf.variable_scope("account_for_strides"):
-  
-    if 2 in params.get('strides'):
-      
-      print("Reducing lenghts")
-      
-      seqs_len = tf.cast(tf.div(seqs_len,2), tf.int32)
     
   with tf.variable_scope("model"):
     
@@ -209,8 +197,9 @@ def teacher_model_function(features, labels, mode, params):
   
   with tf.variable_scope('viz_logits'): 
     tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
+    
+  seqs_len = length(logits, data_format = params.get('data_format'))
         
-  
   if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
     
     with tf.name_scope("predictions"):
@@ -316,8 +305,6 @@ def student_model_function(features, labels, mode, params):
     if params.get('data_format') == "channels_last":
       
       audio_features = tf.transpose(audio_features, (0, 2, 1))
-      
-  seqs_len = length(audio_features, data_format = params.get('data_format'))
         
   with tf.variable_scope("model"):
     
@@ -341,10 +328,12 @@ def student_model_function(features, labels, mode, params):
         
     elif params.get('data_format') == 'channels_last':
       logits = tf.transpose(logits, (1,0,2))
-      
-  tf.assert_equal(tf.shape(logits),tf.shape(teacher_logits))
   
-  tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
+  with tf.variable_scope('viz_logits'): 
+    
+    tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
+  
+  seqs_len = length(logits, data_format = params.get('data_format'))
         
   if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
     
@@ -385,22 +374,31 @@ def student_model_function(features, labels, mode, params):
     
     # right axis?
     softmaxed_logits = tf.nn.softmax(logits, axis = 2)
-    soft_targets = tf.nn.softmax(teacher_logits/params.get('temperature'), axis = 2)
+    soft_targets = tf.nn.softmax(teacher_logits / params.get('temperature'), axis = 2)
     
     logits_fl = tf.reshape(softmaxed_logits, [tf.shape(logits)[1],-1])
     st_fl = tf.reshape(soft_targets,[tf.shape(logits)[1],-1])
+    
+    with tf.variable_scope("sanity_check"):
+      tf.assert_equal(tf.shape(logits_fl),tf.shape(st_fl))
                 
+#    xent_soft_targets = tf.nn.softmax_cross_entropy_with_logits_v2(labels = st_fl, logits = logits_fl)
+    
     xent_soft_targets = tf.reduce_mean(-tf.reduce_sum(st_fl * tf.log(logits_fl), axis=1))
+    
+    tf.summary.scalar('st_xent', xent_soft_targets)
     
     #"Since the magnitudes of the gradients produced by the soft targets scale as 1/T^2
     #it is important to multiply them by T^2 when using both hard and soft targets"  
-    xent_st = xent_soft_targets  # * tf.cast(tf.square(params.get('temperature')), tf.float32) 
-    
-    tf.summary.scalar('soft_target_xent', xent_st)
+#    xent_st = xent_soft_targets  * tf.cast(tf.square(params.get('temperature')), tf.float32) 
+#    
+#    tf.summary.scalar('squared_st_xent', xent_st)
       
   with tf.name_scope('total_loss'):
     alpha = params.get('alpha')
-    loss = (1 - alpha) * ctc_loss +  (alpha * xent_st)
+    loss = (1 - alpha) * ctc_loss +  (alpha * xent_soft_targets)
+    tf.summary.scalar('total_loss', loss)
+    
   
   if mode == tf.estimator.ModeKeys.TRAIN:
     
