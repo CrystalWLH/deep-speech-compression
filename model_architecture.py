@@ -115,7 +115,7 @@ def clip_and_step(optimizer, loss, clipping):
                                        name="train_step")
   return train_op, grads_and_vars, global_norm    
 
-def length(batch, data_format):
+def length(batch):
   """
   Get length of sequences in a batch of logits. Since logits are in (max_length,batch,channles) 
   they are transposed to `channels_last` format (batch, max_length, channels). If `channels_first`.
@@ -198,13 +198,18 @@ def teacher_model_function(features, labels, mode, params):
   with tf.variable_scope('viz_logits'): 
     tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
     
-  seqs_len = length(logits, data_format = params.get('data_format'))
+  seqs_len = length(logits)
         
-  if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
+  with tf.name_scope("ler"):
     
-    with tf.name_scope("predictions"):
+    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
       
-      sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
+    sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
+    
+    ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels))
+    
+    tf.summary.scalar('ler',ler)
+    
   
   if mode == tf.estimator.ModeKeys.PREDICT:
         
@@ -216,7 +221,6 @@ def teacher_model_function(features, labels, mode, params):
                                               sparse_decoded.dense_shape,
                                               sparse_decoded.values)
   
-      
       pred = {'decoding' : dense_decoded, 'log_prob' : log_prob, 'logits' : logits}
       
     return tf.estimator.EstimatorSpec(mode = mode, predictions=pred)
@@ -224,7 +228,6 @@ def teacher_model_function(features, labels, mode, params):
 
   with tf.name_scope('loss'):
     
-    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
     
     batches_ctc_loss = tf.nn.ctc_loss(labels = sparse_labels,
                                       inputs =  logits, 
@@ -256,7 +259,6 @@ def teacher_model_function(features, labels, mode, params):
   
   assert mode == tf.estimator.ModeKeys.EVAL
 
-  ler = tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels)
   mean_ler, op = tf.metrics.mean(ler)
   
   metrics = {"ler": (mean_ler, op)}
@@ -334,12 +336,18 @@ def student_model_function(features, labels, mode, params):
     tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
   
   seqs_len = length(logits, data_format = params.get('data_format'))
-        
-  if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL: 
+  
+  
+  with tf.name_scope("ler"):
     
-    with tf.name_scope("predictions"):
+    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
       
-      sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder (logits, seqs_len)
+    sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
+    
+    ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels))
+    
+    tf.summary.scalar('ler',ler)
+        
   
   if mode == tf.estimator.ModeKeys.PREDICT:
         
@@ -429,7 +437,6 @@ def student_model_function(features, labels, mode, params):
   
   assert mode == tf.estimator.ModeKeys.EVAL
 
-  ler = tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels)
   mean_ler, op = tf.metrics.mean(ler)
   
   metrics = {"ler": (mean_ler, op)}
