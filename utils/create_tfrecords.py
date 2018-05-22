@@ -233,25 +233,25 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
   
   writer = tf.python_io.TFRecordWriter(out_file)
   
-  arguments_to_map = [(audio_example.audio_path, sample_rate, form, n_fft, hop_length, n_mfcc) for audio_example in data]
+#  arguments_to_map = [(audio_example.audio_path, sample_rate, form, n_fft, hop_length, n_mfcc) for audio_example in data]
+#  
+#  labels = [audio_example.transcription for audio_example in data]
+#  
+#  logger.info("Computing audio features representation")
+#  
+#  pool = mp.Pool(mp.cpu_count())
+#      
+#  audios = pool.starmap(get_audio, arguments_to_map)
+#  
+#  logger.info("Finished computing audio feature representation")
+#  
+#  for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
   
-  labels = [audio_example.transcription for audio_example in data]
-  
-  logger.info("Computing audio features representation")
-  
-  pool = mp.Pool(mp.cpu_count())
-      
-  audios = pool.starmap(get_audio, arguments_to_map)
-  
-  logger.info("Finished computing audio feature representation")
-  
-  for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
-  
-#  for idx,ex in enumerate(data,start = 1):
-#    
-#    audio = get_audio(ex.audio_path,sample_rate, form, n_fft, hop_length, n_mfcc)
-#    
-#    label = ex.transcription
+  for idx,ex in enumerate(data,start = 1):
+    
+    audio = get_audio(ex.audio_path,sample_rate, form, n_fft, hop_length, n_mfcc)
+    
+    label = ex.transcription
   
     if form == 'raw':
       audio = normalize(audio[np.newaxis, :])
