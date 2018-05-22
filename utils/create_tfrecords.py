@@ -12,7 +12,7 @@ import random
 import numpy as np
 import tensorflow as tf
 from pathlib import Path
-from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_pickle
+from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_pickle,load_pickle
 from utils.audio_utils import get_audio,normalize
 from collections import namedtuple
 import multiprocessing as mp
@@ -30,6 +30,7 @@ def parse_args():
   """
   parser = argparse.ArgumentParser(description='Create tfrecord files from LibriSpeech corpus')
   parser.add_argument('-d', '--data', required=True, type = str, help='Path to unzipped LibriSpeech dataset')
+  parser.add_argument('-t', '--cached-transcripts', type = str,default = '0', help='Path to audio_id-transcription lookup. Pass 0 if you still have to create it')
   parser.add_argument('-s', '--splits', required=True, type = str,
                       help="Comma separated list of either folders (`dev-others`), split (train) or mixed. \
                       If generic split is defined (e.g. `train`) folder for that split will be merged into single file.")
@@ -162,10 +163,17 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   
   return data
 
-def _preprocessing_error_callback(error):
-    raise RuntimeError('An error occurred during preprocessing') from error
-
-
+#  arguments_to_map = [(audio_example.audio_path, sample_rate, form, n_fft, hop_length, n_mfcc) for audio_example in data]
+#  
+#  labels = [audio_example.transcription for audio_example in data]
+#  
+#  logger.info("Computing audio features representation")
+#      
+#  audios = pool.starmap_async(get_audio, arguments_to_map, error_callback= _preprocessing_error_callback).get() 
+#  
+#  logger.info("Finished computing audio feature representation")
+#  
+#  for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
 
 def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, hop_length, n_mfcc):
   """
@@ -192,29 +200,21 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
   
   writer = tf.python_io.TFRecordWriter(out_file)
   
-  pool = mp.Pool(processes= mp.cpu_count())
-
-  arguments_to_map = [(audio_example.audio_path, sample_rate, form, n_fft, hop_length, n_mfcc) for audio_example in data]
-  
-  labels = [audio_example.transcription for audio_example in data]
-  
-  logger.info("Computing audio features representation")
-      
-  audios = pool.starmap_async(get_audio, arguments_to_map, error_callback= _preprocessing_error_callback).get() 
-  
-  logger.info("Finished computing audio feature representation")
-  
-  for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
+  for idx,ex in enumerate(data,start = 1):
     
+    audio = get_audio(ex.audio_path,sample_rate, form, n_fft, hop_length, n_mfcc)
+    
+    label = ex.transcription
+  
     if form == 'raw':
       audio = normalize(audio[np.newaxis, :])
       
     audio_shape = list(audio.shape)
-    
+  
     if idx == 1:
-    
+  
       logger.info("Number of input channels is : {}".format(audio_shape[0]))
-                    
+                  
     audio = audio.flatten()
       
     tfrecord_write_example(writer = writer, audio =  audio, 
@@ -222,7 +222,6 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
     if (idx)%1000 == 0:
         
       logger.info("Successfully wrote {} tfrecord examples".format(idx))
-  
 
   writer.close()   
       
@@ -234,19 +233,29 @@ if __name__ == "__main__":
     
   create_tfrecords_folder(args.out)
   
-  chars_set, ids2trans = create_vocab_id2transcript(args.data)
+  if not int(args.cached_transcripts):
   
-  chars = [c for ids,trans in ids2trans.items() for c in trans]
+    chars_set, ids2trans = create_vocab_id2transcript(args.data)
     
-  if args.loss == 'ctc':
+    chars = [c for ids,trans in ids2trans.items() for c in trans]
+      
+    if args.loss == 'ctc':
+      
+      chars2ids = get_ctc_char2ids(chars_set)
+      
+    elif args.loss == 'asg':
+      
+      raise NotImplementedError("Sorry! ASG loss is not available!")
+      
+    save_pickle(chars2ids, args.out, 'vocab.pkl')
     
-    chars2ids = get_ctc_char2ids(chars_set)
+    save_pickle(ids2trans, args.out, 'ids2transc.pkl')
     
-  elif args.loss == 'asg':
+  else:
     
-    raise NotImplementedError("Sorry! ASG loss is not available!")
+    logger.info("Loading cached id-transcriptions lookup")
     
-  save_pickle(chars2ids, args.out, 'vocab.pkl')
+    ids2trans = load_pickle(args.cached_transcripts)
       
   encoded_transcriptions = get_id2encoded_transcriptions(ids2trans, chars2ids)
   
@@ -259,7 +268,7 @@ if __name__ == "__main__":
     
     write_tfrecords_by_split(data= split_data, out_path = args.out, split = split,
                                  sample_rate = args.sr, form = args.format,
-                                 n_fft = 400, hop_length = 160, n_mfcc = 40)
+                                 n_fft = 512, hop_length = 160, n_mfcc = 40)
   
   
   
