@@ -129,11 +129,13 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
       
   main_path = Path(data_path)
   
-  splits_folders = [child for child in main_path.iterdir() if child.is_dir() and child.parts[1].startswith(split)]
+  splits_folders = [child for child in main_path.iterdir() if child.is_dir() and split in str(child)]
   
-  logger.info("Processing : {}".foramt(splits_folders))
+  logger.info("Processing : {}".format([str(s) for s in splits_folders]))
   
   audio_paths = [audio for split_folder in splits_folders for audio in split_folder.glob('**/*.flac')]
+  
+  logger.info("Loaded {} audio paths".format(len(audio_paths)))
   
   if split.startswith('train') or split.startswith('dev'):
     
