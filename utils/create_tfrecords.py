@@ -131,6 +131,8 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   
   splits_folders = [child for child in main_path.iterdir() if child.is_dir() and child.parts[1].startswith(split)]
   
+  logger.info("Processing : {}".foramt(splits_folders))
+  
   audio_paths = [audio for split_folder in splits_folders for audio in split_folder.glob('**/*.flac')]
   
   if split.startswith('train') or split.startswith('dev'):
@@ -240,8 +242,6 @@ if __name__ == "__main__":
       
   encoded_transcriptions = get_id2encoded_transcriptions(ids2trans, chars2ids)
   
-  
-  
   for split in args.splits.split(','):
     
     logger.info("\n\nProcessing files in `{}`\n\n".format(split))
@@ -251,7 +251,7 @@ if __name__ == "__main__":
     
     write_tfrecords_by_split(data= split_data, out_path = args.out, split = split,
                                  sample_rate = args.sr, form = args.format,
-                                 n_fft = 512, hop_length = 160, n_mfcc = 40)
+                                 n_fft = 400, hop_length = 160, n_mfcc = 40)
   
   
   

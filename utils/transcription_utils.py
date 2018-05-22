@@ -161,8 +161,14 @@ def create_vocab_id2transcript(dir_path):
     for split_folder in splits_folders:
       for trans in split_folder.glob('**/*.txt'):
         yield trans
+        
+  logger.info("Created transcriptions file generator")
   
-  for trans_file in trans_files_gen():
+  for idx,trans_file in enumerate(trans_files_gen(),start = 1):
+    
+    if (idx%1000) == 0:
+      
+      logger.info("Processing {}th transcription file".format(idx))
     
     with trans_file.open() as tr_file:
       for line in tr_file:
@@ -173,6 +179,8 @@ def create_vocab_id2transcript(dir_path):
         ids2transcriptions[ref] = sent_chars
         
         chars_set.update(sent_chars)
+        
+        
         
   logger.info("Created character set of size {}".format(len(chars_set)))
   logger.info("Created transcriptions lookup")
