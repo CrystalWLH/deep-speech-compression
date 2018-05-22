@@ -162,6 +162,10 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   
   return data
 
+def _preprocessing_error_callback(error):
+    raise RuntimeError('An error occurred during preprocessing') from error
+
+
 
 def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, hop_length, n_mfcc):
   """
@@ -196,7 +200,7 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
   
   logger.info("Computing feature representation for audios")
     
-  audios = pool.starmap(get_audio, arguments_to_map)  
+  audios = pool.starmap(get_audio, arguments_to_map, error_callback= _preprocessing_error_callback)  
   
   for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
     
