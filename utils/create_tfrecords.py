@@ -198,9 +198,11 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
   
   labels = [audio_example.transcription for audio_example in data]
   
-  logger.info("Computing feature representation for audios")
-    
-  audios = pool.starmap(get_audio, arguments_to_map, error_callback= _preprocessing_error_callback)  
+  logger.info("Computing audio features representation")
+      
+  audios = pool.starmap_async(get_audio, arguments_to_map, error_callback= _preprocessing_error_callback).get() 
+  
+  logger.info("Finished computing audio feature representation")
   
   for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
     
