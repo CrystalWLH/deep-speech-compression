@@ -31,6 +31,7 @@ def parse_args():
   return parser.parse_args()
 
 
+
 def tfrecord_write_ex_logits(writer,logits,shape):
   """
   Write example to TFRecordWriter.

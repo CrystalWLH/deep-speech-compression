@@ -7,7 +7,6 @@ Created on Fri May  4 15:40:27 2018
 """
 
 import logging
-import pickle
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -37,45 +36,6 @@ def decode_sequence(seq, idx2char):
   """
   
   return [idx2char.get(c) for c in seq]
-
-def load_pickle(file_path):
-  """
-  Util funciton to load character lookup from pickle format 
-  
-  :param:
-    char_enc (dict) : character lookup
-    path (str) : path where to store item
-    
-  :return:
-    item : whathever was saved in the file
-  """
-  path = Path(file_path)
-  
-  if path.exists():
-    
-    item = pickle.load(open(str(path), mode = "rb"))
-  
-    return item
-  
-  else:
-    raise ValueError("File {} not found!".format(file_path))
-
-
-def save_pickle(char_enc, path, file_name):
-  """
-  Util funciton to save in pickle format character lookup.
-  
-  :param:
-    char_enc (dict) : character lookup
-    path (str) : path where to store item
-  """
-  path = Path(path).joinpath(file_name)
-  
-  if not path.exists():
-  
-    pickle.dump( char_enc, open( str(path), 'wb'))
-  
-    logger.info("Saved character to indices lookup at `{}`".format(path))
 
 
 def sent_char_to_ids(sent,mapping):

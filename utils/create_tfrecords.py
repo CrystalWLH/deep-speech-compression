@@ -12,7 +12,8 @@ import random
 import numpy as np
 import tensorflow as tf
 from pathlib import Path
-from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_pickle,load_pickle
+import pickle
+from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions
 from utils.audio_utils import get_audio,normalize
 from collections import namedtuple
 import multiprocessing as mp
@@ -30,7 +31,8 @@ def parse_args():
   """
   parser = argparse.ArgumentParser(description='Create tfrecord files from LibriSpeech corpus')
   parser.add_argument('-d', '--data', required=True, type = str, help='Path to unzipped LibriSpeech dataset')
-  parser.add_argument('-t', '--cached-transcripts', type = str,default = '0', help='Path to audio_id-transcription lookup. Pass 0 if you still have to create it')
+  parser.add_argument('--cached-ids2trans', type = str,default = None, help='Path to audio_id-transcription lookup. Do not call this argument if you wish to create this lookup')
+  parser.add_argument('--cached-chars2ids', type = str,default = None, help='Path to ids-chars lookup. Do not call this argument if you wish to create this lookup')
   parser.add_argument('-s', '--splits', required=True, type = str,
                       help="Comma separated list of either folders (`dev-others`), split (train) or mixed. \
                       If generic split is defined (e.g. `train`) folder for that split will be merged into single file.")
@@ -44,6 +46,47 @@ def parse_args():
                       help = "Stop processing after having parsed this amount of audios. Default : stop only when job is done")
   
   return parser.parse_args()
+
+
+
+def load_pickle(file_path):
+  """
+  Util funciton to load character lookup from pickle format 
+  
+  :param:
+    char_enc (dict) : character lookup
+    path (str) : path where to store item
+    
+  :return:
+    item : whathever was saved in the file
+  """
+  path = Path(file_path)
+  
+  if path.exists():
+    
+    item = pickle.load(open(str(path), mode = "rb"))
+  
+    return item
+  
+  else:
+    raise ValueError("File {} not found!".format(file_path))
+
+
+def save_pickle(char_enc, path, file_name):
+  """
+  Util funciton to save in pickle format character lookup.
+  
+  :param:
+    char_enc (dict) : character lookup
+    path (str) : path where to store item
+  """
+  path = Path(path).joinpath(file_name)
+  
+  if not path.exists():
+  
+    pickle.dump( char_enc, open( str(path), 'wb'))
+  
+    logger.info("Saved item at `{}`".format(path))
 
 
 class AudioExample(namedtuple('AudioExample', 'audio_path transcription')):
@@ -163,17 +206,7 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   
   return data
 
-#  arguments_to_map = [(audio_example.audio_path, sample_rate, form, n_fft, hop_length, n_mfcc) for audio_example in data]
-#  
-#  labels = [audio_example.transcription for audio_example in data]
-#  
-#  logger.info("Computing audio features representation")
-#      
-#  audios = pool.starmap_async(get_audio, arguments_to_map, error_callback= _preprocessing_error_callback).get() 
-#  
-#  logger.info("Finished computing audio feature representation")
-#  
-#  for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
+
 
 def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, hop_length, n_mfcc):
   """
@@ -200,11 +233,25 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
   
   writer = tf.python_io.TFRecordWriter(out_file)
   
-  for idx,ex in enumerate(data,start = 1):
-    
-    audio = get_audio(ex.audio_path,sample_rate, form, n_fft, hop_length, n_mfcc)
-    
-    label = ex.transcription
+  arguments_to_map = [(audio_example.audio_path, sample_rate, form, n_fft, hop_length, n_mfcc) for audio_example in data]
+  
+  labels = [audio_example.transcription for audio_example in data]
+  
+  logger.info("Computing audio features representation")
+  
+  pool = mp.Pool(mp.cpu_count())
+      
+  audios = pool.starmap(get_audio, arguments_to_map)
+  
+  logger.info("Finished computing audio feature representation")
+  
+  for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
+  
+#  for idx,ex in enumerate(data,start = 1):
+#    
+#    audio = get_audio(ex.audio_path,sample_rate, form, n_fft, hop_length, n_mfcc)
+#    
+#    label = ex.transcription
   
     if form == 'raw':
       audio = normalize(audio[np.newaxis, :])
@@ -233,29 +280,33 @@ if __name__ == "__main__":
     
   create_tfrecords_folder(args.out)
   
-  if not int(args.cached_transcripts):
+  if not args.cached_ids2trans:
   
     chars_set, ids2trans = create_vocab_id2transcript(args.data)
     
     chars = [c for ids,trans in ids2trans.items() for c in trans]
+    
+    save_pickle(ids2trans, args.out, 'ids2transc.pkl')
       
     if args.loss == 'ctc':
       
       chars2ids = get_ctc_char2ids(chars_set)
       
+      save_pickle(chars2ids, args.out, 'ctc_vocab.pkl')
+      
     elif args.loss == 'asg':
       
       raise NotImplementedError("Sorry! ASG loss is not available!")
-      
-    save_pickle(chars2ids, args.out, 'vocab.pkl')
-    
-    save_pickle(ids2trans, args.out, 'ids2transc.pkl')
     
   else:
     
     logger.info("Loading cached id-transcriptions lookup")
     
-    ids2trans = load_pickle(args.cached_transcripts)
+    ids2trans = load_pickle(args.cached_ids2trans)
+    
+    logger.info("Loading cached id-chars lookup")
+    
+    chars2ids = load_pickle(args.cached_chars2ids)
       
   encoded_transcriptions = get_id2encoded_transcriptions(ids2trans, chars2ids)
   

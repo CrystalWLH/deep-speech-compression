@@ -13,7 +13,8 @@ import json
 import tensorflow as tf
 from model_input import teacher_input_func, student_input_func  
 from model_architecture import teacher_model_function, student_model_function
-from utils.transcription_utils import load_pickle,decoder_dict,decode_sequence
+from utils.create_tfrecords import load_pickle
+from utils.transcription_utils import decoder_dict,decode_sequence
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
