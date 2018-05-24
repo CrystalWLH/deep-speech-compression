@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
 
 
+
 def decoder_dict(char2idx):
   """
   Create lookup index to character for decoding predictions.

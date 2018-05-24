@@ -199,17 +199,9 @@ def teacher_model_function(features, labels, mode, params):
     tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
     
   seqs_len = length(logits)
-        
-  with tf.name_scope("ler"):
-    
-    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
-      
+  
+  with tf.name_scope('decoder'):
     sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
-    
-    ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels))
-    
-    tf.summary.scalar('ler',ler)
-    
   
   if mode == tf.estimator.ModeKeys.PREDICT:
         
@@ -224,10 +216,20 @@ def teacher_model_function(features, labels, mode, params):
       pred = {'decoding' : dense_decoded, 'log_prob' : log_prob, 'logits' : logits}
       
     return tf.estimator.EstimatorSpec(mode = mode, predictions=pred)
+  
+  
+  with tf.name_scope('labels_to_sparse'):
+    
+    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
+  
+  with tf.name_scope("ler"):
+    
+    ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels))
+    
+    tf.summary.scalar('ler',ler)
       
 
   with tf.name_scope('loss'):
-    
     
     batches_ctc_loss = tf.nn.ctc_loss(labels = sparse_labels,
                                       inputs =  logits, 
@@ -335,19 +337,11 @@ def student_model_function(features, labels, mode, params):
     
     tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
   
-  seqs_len = length(logits, data_format = params.get('data_format'))
+  seqs_len = length(logits)
   
-  
-  with tf.name_scope("ler"):
+  with tf.name_scope('decoder'):
     
-    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
-      
-    sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
-    
-    ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels))
-    
-    tf.summary.scalar('ler',ler)
-        
+    sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)        
   
   if mode == tf.estimator.ModeKeys.PREDICT:
         
@@ -363,12 +357,21 @@ def student_model_function(features, labels, mode, params):
       pred = {'decoding' : dense_decoded, 'log_prob' : log_prob}
       
     return tf.estimator.EstimatorSpec(mode = mode, predictions=pred)
+  
+  with tf.name_scope('labels_to_sparse'):
+    
+    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
+    
+  
+  with tf.name_scope("ler"):
+      
+    ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels))
+    
+    tf.summary.scalar('ler',ler)
 
     
   with tf.name_scope('ctc_loss'):
-  
-    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
-    
+      
     batches_ctc_loss = tf.nn.ctc_loss(labels = sparse_labels,
                                       inputs =  logits, 
                                       sequence_length = seqs_len)

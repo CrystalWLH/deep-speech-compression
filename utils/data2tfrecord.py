@@ -8,15 +8,14 @@ Created on Tue May  1 16:54:47 2018
 
 import argparse
 import logging
-import random
-import numpy as np
 import tensorflow as tf
 from pathlib import Path
 import pickle
-from utils.transcription_utils import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions
-from utils.audio_utils import get_audio,normalize
-from collections import namedtuple
+from utils.transcription import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions
+from utils.audio import partial_get_audio_func,get_audio_id
 import multiprocessing as mp
+import time
+from functools import partial
 #######################################
 # CTC LOSS : LARGEST VALUE 
 # OF CHAR INIDICES MUST BE FOR `BLANK`
@@ -33,6 +32,8 @@ def parse_args():
   parser.add_argument('-d', '--data', required=True, type = str, help='Path to unzipped LibriSpeech dataset')
   parser.add_argument('--cached-ids2trans', type = str,default = None, help='Path to audio_id-transcription lookup. Do not call this argument if you wish to create this lookup')
   parser.add_argument('--cached-chars2ids', type = str,default = None, help='Path to ids-chars lookup. Do not call this argument if you wish to create this lookup')
+  parser.add_argument('--cores', type = int,default = 2, help='Number of cores to use. Default : 2')
+  parser.add_argument('--chunck-size', type = int,default = 100, help='How many audio examples to send to worker to be processed. Default : 100')
   parser.add_argument('-s', '--splits', required=True, type = str,
                       help="Comma separated list of either folders (`dev-others`), split (train) or mixed. \
                       If generic split is defined (e.g. `train`) folder for that split will be merged into single file.")
@@ -89,16 +90,6 @@ def save_pickle(char_enc, path, file_name):
     logger.info("Saved item at `{}`".format(path))
 
 
-class AudioExample(namedtuple('AudioExample', 'audio_path transcription')):
-  """
-  Namedtuple custom class. It stores `audio_path` a string representing path to the audio and `transcription`, i.e. 
-  the correspondent encoded (int) transcription.
-  """
-  
-  def __str__(self):
-    return '%s(%s, %s)' % (self.__class__.__name__, self.audio_path, self.transcription)
-  
-
 def create_tfrecords_folder(out_path):
   """
   Create folder where tfrecord files will be stored
@@ -140,8 +131,8 @@ def tfrecord_write_example(writer,audio, audio_shape, labels):
               }))
   
   writer.write(example.SerializeToString())
-
-
+  
+  
 def _int64_feature(value):
   """
   Map list of ints to tf compatible Features
@@ -166,34 +157,20 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
     id2encoded_transc (dict) : dictionary of transcription ids (keys) and the transcription (values) in list of ints format
     limit (int) : when to stop
   :return:
-    data (list) : list of AudioExample objects
+    data (list) : list of dictionaries
   """
     
   data = []
       
-  main_path = Path(data_path)
-  
-  splits_folders = [child for child in main_path.iterdir() if child.is_dir() and split in str(child)]
-  
-  logger.info("Processing : {}".format([str(s) for s in splits_folders]))
-  
-  audio_paths = [audio for split_folder in splits_folders for audio in split_folder.glob('**/*.flac')]
-  
-  logger.info("Loaded {} audio paths".format(len(audio_paths)))
-  
-  if split.startswith('train') or split.startswith('dev'):
-    
-    logger.info("Shuffling data before parsing")
-    
-    random.shuffle(audio_paths)
+  audio_paths = get_audio_files(data_path)
   
   for idx,audio_file in enumerate(audio_paths,start = 1):
     
-    transcription_index = audio_file.parts[-1].strip(audio_file.suffix)
+    audio_id = get_audio_id(audio_file)
           
-    labels = id2encoded_transc[transcription_index]
+    labels = id2encoded_transc[audio_id]
           
-    data.append(AudioExample(str(audio_file),labels))
+    data.append({'audio' : str(audio_file), 'labels' : labels})
       
     if limit and idx >= limit:
       
@@ -206,15 +183,50 @@ def load_data_by_split(data_path, split, id2encoded_transc, limit):
   
   return data
 
+def transform_sample(audio_path,preprocess_func):
+  """
+  Transform audio with function.
+  
+  :param:
+    audio_path (str) : path to audio
+    preprocess_func (function) : transformation function
+  :return:
+    audio_id (str) : id of audio
+    audio_data (np.ndarray) : audio data
+    
+  """
+  audio_data = preprocess_func(audio_path)
+  audio_id = get_audio_id(audio_path)
+  return audio_id,audio_data
+  
+
+def get_audio_files(data_path):
+  """
+  Create generator of audio paths.
+  
+  :param:
+    data_path (str) : path to main folder of LibriSpeech corpus
+  """
+  
+  main_path = Path(data_path)
+  
+  splits_folders = [child for child in main_path.iterdir() if child.is_dir() and split in str(child)]
+  
+  for split_folder in splits_folders:
+    for audio in split_folder.glob('**/*.flac'):
+      yield str(audio)
 
 
-def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, hop_length, n_mfcc):
+
+def write_tfrecords_by_split(data_path,out_path,split,id2encoded_transc, sample_rate, form, n_fft, hop_length, n_mfcc, chunck_size,cores):
   """
   Write data loaded with `load_data_by_split` to a tf record file. If form is not specified raw audio are loaded. 
   Raw audio expanded to 2D for compatibility with input to Convolution operations.
   
   :param:
+    data_path (str) : path to main folder of LibriSpeech corpus
     out_path (str) : folder where to store tfrecord data
+    id2encoded_transc (dict) : dictionary of transcription ids (keys) and the transcription (values) in list of ints format
     split (str) : part of dataset
     data (list) : list of AudioExample objects
     sample_rate (int) : rate at which audio was sampled when loading
@@ -222,54 +234,47 @@ def write_tfrecords_by_split(out_path, split, data, sample_rate, form, n_fft, ho
     n_mfcc (int) : the number of coefficients for mfccs 
     n_fft (int) : the window size of the fft
     hop_length (int): the hop length for the window
+    chunck_size (int) : how many batched items to send to worker
+    cores (int) :Number of cores to use. Default : 2
     
   """
-  
+    
   out_path = create_tfrecords_folder(out_path)
   
   out_file = str(out_path.joinpath('tfrecords_{}.{}'.format(form,split.strip('-'))))
-  
+    
   logger.info("Examples will be stored in `{}`".format(str(out_file)))
   
   writer = tf.python_io.TFRecordWriter(out_file)
   
-#  arguments_to_map = [(audio_example.audio_path, sample_rate, form, n_fft, hop_length, n_mfcc) for audio_example in data]
-#  
-#  labels = [audio_example.transcription for audio_example in data]
-#  
-#  logger.info("Computing audio features representation")
-#  
-#  pool = mp.Pool(mp.cpu_count())
-#      
-#  audios = pool.starmap(get_audio, arguments_to_map)
-#  
-#  logger.info("Finished computing audio feature representation")
-#  
-#  for idx,(audio,label) in enumerate(zip(audios,labels),start = 1):
+  get_audio = partial_get_audio_func(form, sample_rate, n_fft, hop_length, n_mfcc)
   
-  for idx,ex in enumerate(data,start = 1):
-    
-    audio = get_audio(ex.audio_path,sample_rate, form, n_fft, hop_length, n_mfcc)
-    
-    label = ex.transcription
+  transform_sample_part = partial(transform_sample,preprocess_func = get_audio )
   
-    if form == 'raw':
-      audio = normalize(audio[np.newaxis, :])
-      
+  logger.info("Start processing audio files")
+  
+  pool = mp.Pool(cores)
+  
+  start_time = time.time()
+  
+  for idx,(audio_id,audio) in enumerate(pool.imap_unordered(transform_sample_part,get_audio_files(data_path),chunck_size), start = 1):
+        
+    labels = id2encoded_transc.get(audio_id)
+        
     audio_shape = list(audio.shape)
   
-    if idx == 1:
-  
-      logger.info("Number of input channels is : {}".format(audio_shape[0]))
-                  
     audio = audio.flatten()
       
     tfrecord_write_example(writer = writer, audio =  audio, 
-                                     audio_shape = audio_shape,labels = label)
+                                     audio_shape = audio_shape,labels = labels)
     if (idx)%1000 == 0:
+      
+      end = time.time()
         
-      logger.info("Successfully wrote {} tfrecord examples".format(idx))
-
+      logger.info("Successfully parsed audio and saved to tfrecord {} examples in {}".format(idx,end - start_time))
+      
+      start_time = time.time()
+        
   writer.close()   
       
   logger.info("Completed writing examples in tfrecords format at `{}`".format(out_file))
@@ -314,12 +319,17 @@ if __name__ == "__main__":
     
     logger.info("\n\nProcessing files in `{}`\n\n".format(split))
   
-    split_data = load_data_by_split(data_path = args.data, split = split,
-                                   id2encoded_transc= encoded_transcriptions, limit = args.limit )
-    
-    write_tfrecords_by_split(data= split_data, out_path = args.out, split = split,
-                                 sample_rate = args.sr, form = args.format,
-                                 n_fft = 512, hop_length = 160, n_mfcc = 40)
+    write_tfrecords_by_split(data_path = args.data,
+                             out_path = args.out,
+                             split = split,
+                             id2encoded_transc = encoded_transcriptions,
+                             sample_rate = args.sr,
+                             form = args.format,
+                             n_fft = 512,
+                             hop_length = 160,
+                             n_mfcc = 13,
+                             chunck_size = args.chunck_size,
+                             cores = args.cores)
   
   
   

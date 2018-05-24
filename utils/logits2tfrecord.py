@@ -10,10 +10,10 @@ import logging
 import argparse
 import numpy as np
 import tensorflow as tf
-from model_input import teacher_input_func
-from model_architecture import teacher_model_function
-from model_main import config2params,complete_name
-from utils.create_tfrecords import create_tfrecords_folder,_float_feature,_int64_feature
+from input_funcs import teacher_input_func
+from models import teacher_model_function
+from main import config2params,complete_name
+from utils.data2tfrecords import create_tfrecords_folder,_float_feature,_int64_feature
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')

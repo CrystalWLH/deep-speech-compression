@@ -11,10 +11,10 @@ import logging
 from configparser import ConfigParser
 import json
 import tensorflow as tf
-from model_input import teacher_input_func, student_input_func  
-from model_architecture import teacher_model_function, student_model_function
-from utils.create_tfrecords import load_pickle
-from utils.transcription_utils import decoder_dict,decode_sequence
+from input_funcs import teacher_input_func, student_input_func  
+from models import teacher_model_function, student_model_function
+from utils.data2tfrecord import load_pickle
+from utils.transcription import decoder_dict,decode_sequence
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
@@ -91,8 +91,8 @@ def config2params(config):
   env_params['input_channels'] = configuration['GENERAL'].getint('input_channels', None)
   env_params['batch_size'] = configuration['TRAIN'].getint('batch_size', 512)
   env_params['train_data'] = configuration['FILES'].get('train_data','./tfrecords_data/tfrecords_mfccs.train')
-  env_params['eval_data'] = configuration['FILES'].get('train_data','./tfrecords_data/tfrecords_mfccs.dev_clean')
-  env_params['test_data'] = configuration['FILES'].get('train_data','./tfrecords_data/tfrecords_mfccs.test_clean')
+  env_params['eval_data'] = configuration['FILES'].get('eval_data','./tfrecords_data/tfrecords_mfccs.dev_clean')
+  env_params['test_data'] = configuration['FILES'].get('test_data','./tfrecords_data/tfrecords_mfccs.test_clean')
   env_params['char2idx'] = load_pickle(configuration['FILES'].get('vocab_path','./test/vocab.pkl'))
   
   if not env_params['input_channels']:
