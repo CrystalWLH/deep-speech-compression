@@ -194,9 +194,6 @@ def teacher_model_function(features, labels, mode, params):
       
     elif params.get('data_format') == 'channels_last':
       logits = tf.transpose(logits, (1,0,2))
-  
-  with tf.variable_scope('viz_logits'): 
-    tf.summary.image('logits', tf.expand_dims(tf.transpose(logits, (1, 2, 0)), 3))
     
   seqs_len = length(logits)
   
@@ -217,16 +214,12 @@ def teacher_model_function(features, labels, mode, params):
       
     return tf.estimator.EstimatorSpec(mode = mode, predictions=pred)
   
-  
-  with tf.name_scope('labels_to_sparse'):
     
-    sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
-  
-  with tf.name_scope("ler"):
+  sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
+      
+  ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels), name = 'ler')
     
-    ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels))
-    
-    tf.summary.scalar('ler',ler)
+  tf.summary.scalar('ler',ler)
       
 
   with tf.name_scope('loss'):
@@ -260,7 +253,7 @@ def teacher_model_function(features, labels, mode, params):
   
   
   assert mode == tf.estimator.ModeKeys.EVAL
-
+  
   mean_ler, op = tf.metrics.mean(ler)
   
   metrics = {"ler": (mean_ler, op)}

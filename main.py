@@ -137,7 +137,7 @@ if __name__ == '__main__':
     
   config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1, save_checkpoints_steps=20)
   
-  logging_hook = tf.train.LoggingTensorHook({"mean_ler": "mean_ler"}, every_n_iter=1000)
+  logging_hook = tf.train.LoggingTensorHook({"ler": "ler"}, every_n_iter=1000)
   
   
   if env_params.get('model_type') == 'teacher':
@@ -156,7 +156,7 @@ if __name__ == '__main__':
                                   batch_size = env_params.get('batch_size'))
                                   
 
-      estimator.train(input_fn= input_fn,steps= env_params.get('steps'))
+      estimator.train(input_fn= input_fn,steps= env_params.get('steps'), hooks = [logging_hook])
       
     elif args.mode == "eval":
       
@@ -165,7 +165,8 @@ if __name__ == '__main__':
                                     input_channels = env_params.get('input_channels'),
                                     mode = 'eval',
                                     epochs = 1,
-                                    batch_size = env_params.get('batch_size'))
+                                    batch_size =  env_params.get('batch_size')
+                                    )
       
       
       res = estimator.evaluate(input_fn=input_fn)
@@ -180,10 +181,15 @@ if __name__ == '__main__':
                                   epochs = 1,
                                   batch_size = 1 )
       
+      
+      
       idx2char = decoder_dict(env_params.get('char2idx'))
-      for batch_pred in estimator.predict(input_fn=input_fn, yield_single_examples = False):
-        for p in batch_pred['decoding']:
-          print(decode_sequence(p,idx2char))
+      for idx,batch_pred in enumerate(estimator.predict(input_fn=input_fn, yield_single_examples = False)):
+        if idx == 0:
+          for p in batch_pred['decoding']: 
+            print(decode_sequence(p,idx2char))
+        else:
+          break
           
           
   elif env_params.get('model_type') == 'student':

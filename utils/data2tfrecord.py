@@ -262,6 +262,9 @@ def write_tfrecords_by_split(data_path,out_path,split,id2encoded_transc, sample_
     labels = id2encoded_transc.get(audio_id)
         
     audio_shape = list(audio.shape)
+    
+    if idx == 1:
+      logger.info("Number of input channel is {}".format(audio_shape[0]))
   
     audio = audio.flatten()
       
@@ -271,7 +274,7 @@ def write_tfrecords_by_split(data_path,out_path,split,id2encoded_transc, sample_
       
       end = time.time()
         
-      logger.info("Successfully parsed audio and saved to tfrecord {} examples in {}".format(idx,end - start_time))
+      logger.info("Successfully parsed and saved to tfrecord {} examples in {}".format(idx,end - start_time))
       
       start_time = time.time()
         

@@ -9,6 +9,7 @@ __pycache__/
 # external resources
 data/
 models/
+configs/
 
 # Distribution / packaging
 .Python
