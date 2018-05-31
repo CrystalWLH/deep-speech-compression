@@ -13,7 +13,7 @@ import tensorflow as tf
 from input_funcs import teacher_input_func
 from models import teacher_model_function
 from main import config2params,complete_name
-from utils.data2tfrecords import create_tfrecords_folder,_float_feature,_int64_feature
+from utils.data2tfrecord import create_tfrecords_folder,_float_feature,_int64_feature
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
@@ -83,7 +83,7 @@ if __name__  == "__main__":
     
     tfrecord_write_ex_logits(writer = writer, logits = logits, shape = logits_shape)
     
-    if (idx%10) == 0:
+    if (idx%10000) == 0:
       logger.info("Successfully wrote {} logits to {}".format(idx,out_file))
        
   writer.close()
