@@ -169,8 +169,9 @@ if __name__ == '__main__':
                                     )
       
       
-      res = estimator.evaluate(input_fn=input_fn)
-      print("evaluation : {}".format(res))
+     #for checkpoint in tf.train.get_checkpoint_state('./models/w2l_v1_bn0_bs5_relu_c0_conv2_do0').all_model_checkpoint_paths:
+      estimator.evaluate(input_fn=input_fn)
+
   
     elif args.mode == "predict":
       
