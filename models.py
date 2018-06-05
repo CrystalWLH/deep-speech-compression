@@ -435,15 +435,18 @@ def quant_student_model_function(features, labels, mode, params):
       if params.get('bn'):
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
-          train_op, grads_and_vars, glob_grad_norm = quant_clip_and_step(optimizer, loss, params.get('clipping'), quant_weights, original_weights)
+          train_op, quant_global_norm, orig_global_norm,orig_grads,quant_grads = quant_clip_and_step(optimizer, loss, params.get('clipping'), quant_weights, original_weights)
       else:
-        train_op, grads_and_vars, glob_grad_norm = quant_clip_and_step(optimizer, loss, params.get('clipping'), quant_weights, original_weights)
+        train_op, quant_global_norm, orig_global_norm,orig_grads,quant_grads = quant_clip_and_step(optimizer, loss, params.get('clipping'), quant_weights, original_weights)
         
     with tf.name_scope("visualization"):
-      for g, v in grads_and_vars:
-        if v.name.find("kernel") >= 0:
-          tf.summary.scalar(v.name.replace(':0','_') + "gradient_norm", tf.norm(g))
-      tf.summary.scalar("global_gradient_norm", glob_grad_norm)
+      for idx,(g_orig, g_quant) in enumerate(zip(orig_grads,quant_grads)):
+        tf.summary.scalar("model/conv_layer_{}/conv/kernel_gradient_norm".format(idx), tf.norm(g_orig))
+        tf.summary.scalar("model/quant_conv_layer_{}/conv/kernel_gradient_norm".format(idx), tf.norm(g_quant))
+  
+      tf.summary.scalar("global_gradient_norm", orig_global_norm)
+      tf.summary.scalar("quant_global_gradient_norm", quant_global_norm)
+      
   
       
     return tf.estimator.EstimatorSpec(mode=mode, loss=loss,train_op=train_op) 

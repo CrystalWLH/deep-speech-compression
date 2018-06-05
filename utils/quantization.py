@@ -287,15 +287,20 @@ def quant_clip_and_step(optimizer, loss,clipping,quantized_weights, original_wei
   Global norm before clipping.
   """
   
-  quantized_grads = tf.gradients(loss, quantized_weights)
+  quantized_grads = tf.gradients(loss, quantized_weights,name = 'quant_grads')
+  
+  original_grads = tf.gradients(loss, original_weights, name = 'orig_grads')
   
   grads, varis = quantized_grads,original_weights
         
   if clipping:
-      grads, global_norm = tf.clip_by_global_norm(grads, clipping,
+      grads, quant_global_norm = tf.clip_by_global_norm(grads, clipping,
                                                   name="gradient_clipping")
+  
   else:
-      global_norm = tf.global_norm(grads, name="gradient_norm")
+      quant_global_norm = tf.global_norm(grads, name="gradient_norm")
+      
+  original_global_norm = tf.global_norm(original_grads, name="original_gradient_norm")
       
   grads_and_vars = list(zip(grads, varis))  # list call is apparently vital!!
   
@@ -303,7 +308,7 @@ def quant_clip_and_step(optimizer, loss,clipping,quantized_weights, original_wei
                                        global_step=tf.train.get_global_step(),
                                        name="train_step")
   
-  return train_op, grads_and_vars, global_norm    
+  return train_op, quant_global_norm, original_global_norm,original_grads,quantized_grads  
       
     
 if __name__ == "__main__":
