@@ -12,7 +12,7 @@ from configparser import ConfigParser
 import json
 import tensorflow as tf
 from input_funcs import teacher_input_func, student_input_func  
-from models import teacher_model_function, student_model_function
+from models import teacher_model_function, student_model_function,quant_student_model_function
 from utils.data2tfrecord import load_pickle
 from utils.transcription import decoder_dict,decode_sequence
 
@@ -97,26 +97,7 @@ def config2params(config):
   
   if not env_params['input_channels']:
     logger.warning("Number of input channels is not specified! Please provide this field")
-  
-  model_type = 'TEACHER' if env_params.get('model_type') == 'teacher' else 'STUDENT'
-  
-  if model_type == 'STUDENT':
-  
-    env_params['teacher_logits'] = configuration['FILES'].get('teacher_logits')
-    params['temperature'] = configuration['TRAIN'].getint('temperature', 3)
-    params['alpha'] = configuration['TRAIN'].getfloat('alpha', 0.3)
     
-  params['filters'] = json.loads(configuration[model_type].get('filters', [250,250]))
-  params['widths'] = json.loads(configuration[model_type].get('widths', [7,7]))
-  params['strides'] = json.loads(configuration[model_type].get('strides', [1,1]))
-  params['dropouts'] = json.loads(configuration[model_type].get('dropouts', [0,0]))
-  
-  lengths = list(map(len, [params['filters'], params['widths'], params['strides'],params['dropouts']  ] ))
-  
-  if len(set(lengths)) > 1:
-    raise ValueError("Plaese check the net definition in {} section! All the lists must have same length! \n \
-                   Found : `filters` : {},`widths` : {},`strides` : {},`dropouts` : {}".format(model_type,*lengths))
-  
   params['adam_lr'] = configuration['TRAIN'].getfloat('adam_lr',1e-4)
   params['adam_eps'] = configuration['TRAIN'].getfloat('adam_eps',1e-8)
   params['vocab_size'] = len(env_params.get('char2idx'))
@@ -126,6 +107,31 @@ def config2params(config):
   params['bn'] = configuration['TRAIN'].getboolean('bn', False)
   params['clipping'] = configuration['TRAIN'].getint('clipping', 0)
   
+  model_type = 'TEACHER' if env_params.get('model_type') == 'teacher' else 'STUDENT'
+  
+  if model_type == 'STUDENT':
+  
+    env_params['teacher_logits'] = configuration['FILES'].get('teacher_logits')
+    env_params['quantize'] = configuration['GENERAL'].getboolean('quantize',False)
+    params['temperature'] = configuration['TRAIN'].getint('temperature', 3)
+    params['alpha'] = configuration['TRAIN'].getfloat('alpha', 0.3)
+    
+    if env_params.get('quantize'):
+      params['num_bits'] = configuration['QUANTIZATION'].getint('num_bits', 4)
+      params['bucket_size'] = configuration['QUANTIZATION'].getint('bucket_size', 256)
+      params['stochastic'] = configuration['QUANTIZATION'].getboolean('stochastic', False)
+      params['quant_last_layer'] = configuration['QUANTIZATION'].getboolean('quant_last_layer', False)
+      
+  params['filters'] = json.loads(configuration[model_type].get('filters', [250,250]))
+  params['widths'] = json.loads(configuration[model_type].get('widths', [7,7]))
+  params['strides'] = json.loads(configuration[model_type].get('strides', [1,1]))
+  params['dropouts'] = json.loads(configuration[model_type].get('dropouts', [0,0]))
+  
+  lengths = list(map(len, [params['filters'], params['widths'], params['strides'],params['dropouts']  ] ))
+  
+  if len(set(lengths)) > 1:
+    raise ValueError("Plaese check the network definition in {} section! All the lists must have same length! \n \
+                   Found : `filters` : {},`widths` : {},`strides` : {},`dropouts` : {}".format(model_type,*lengths))  
   
   return env_params,params
 
@@ -156,7 +162,7 @@ if __name__ == '__main__':
                                   batch_size = env_params.get('batch_size'))
                                   
 
-      estimator.train(input_fn= input_fn,steps= env_params.get('steps'), hooks = [logging_hook])
+      estimator.train(input_fn= input_fn, hooks = [logging_hook])
       
     elif args.mode == "eval":
       
@@ -195,7 +201,9 @@ if __name__ == '__main__':
           
   elif env_params.get('model_type') == 'student':
     
-    estimator = tf.estimator.Estimator(model_fn=student_model_function, params=params,
+    student_function = quant_student_model_function if env_params.get('quantize') else student_model_function
+    
+    estimator = tf.estimator.Estimator(model_fn= student_function, params=params,
                                        model_dir= complete_name(env_params,params),
                                        config=config)
     
@@ -212,7 +220,46 @@ if __name__ == '__main__':
                                   batch_size = env_params.get('batch_size')
                                   )
         
-      estimator.train(input_fn= input_fn)
+      estimator.train(input_fn= input_fn, hooks = [logging_hook])
+    
+    elif args.mode == "eval":
+      
+      def input_fn():
+        return student_input_func(tfrecord_path = env_params.get('train_data'),
+                                  tfrecord_logits = env_params.get('teacher_logits'),
+                                  vocab_size = len(env_params.get('char2idx')),
+                                  input_channels = env_params.get('input_channels'), 
+                                  mode = 'eval',
+                                  epochs = 1,
+                                  batch_size =  env_params.get('batch_size')
+                                  )
+      
+      
+     #for checkpoint in tf.train.get_checkpoint_state('./models/w2l_v1_bn0_bs5_relu_c0_conv2_do0').all_model_checkpoint_paths:
+      estimator.evaluate(input_fn=input_fn)
+      
+    elif args.mode == "predict":
+      
+      def input_fn():
+        return student_input_func(tfrecord_path = env_params.get('train_data'),
+                                  tfrecord_logits = env_params.get('teacher_logits'),
+                                  vocab_size = len(env_params.get('char2idx')),
+                                  input_channels = env_params.get('input_channels'), 
+                                  epochs = 1,
+                                  batch_size = 1 )
+      
+      
+      idx2char = decoder_dict(env_params.get('char2idx'))
+      for idx,batch_pred in enumerate(estimator.predict(input_fn=input_fn, yield_single_examples = False)):
+        if idx == 0:
+          for p in batch_pred['decoding']: 
+            print(decode_sequence(p,idx2char))
+        else:
+          break
+
+      
+    
+
         
         
         

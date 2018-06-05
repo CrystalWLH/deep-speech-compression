@@ -143,21 +143,23 @@ class Scaling():
 
 def quantize_uniform(tensor,s,bucket_size,stochastic):
   
-  scaling = Scaling()
+  with tf.variable_scope("quantize_weights"):
   
-  tensor = scaling.linear_scale(tensor,bucket_size)
-  
-  s = s - 1
-  
-  if not stochastic:
-  
-    tensor = tf.round(tensor * s) / s
+    scaling = Scaling()
     
-  else:
+    tensor = scaling.linear_scale(tensor,bucket_size)
     
-    raise NotImplementedError("Sorry! Stochastic rounding not implemented yet!")
+    s = s - 1
     
-  tensor = scaling.inv_linear_scale(tensor)
+    if not stochastic:
+    
+      tensor = tf.round(tensor * s) / s
+      
+    else:
+      
+      raise NotImplementedError("Sorry! Stochastic rounding not implemented yet!")
+      
+    tensor = scaling.inv_linear_scale(tensor)
   
   return tensor
   
@@ -166,7 +168,7 @@ def quantize_uniform(tensor,s,bucket_size,stochastic):
 
 def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
                         dropouts, activation, data_format,batchnorm,train,
-                        num_bits,bucket_size,stochastic):
+                        num_bits,bucket_size,stochastic,vocab_size,quant_last_layer):
   """
   Apply sequence of 1D convolution operation.
   
@@ -180,15 +182,18 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
     data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels) 
     batchnorm (bool) : use batch normalization
     train (bool) : wheter in train mode or not
+    vocab_size (int) : size of output
     num_bits (int) : number of bits for quantizing weights
     bucket_size(int) : size of buckets for weights
     stochastic (bool) : use stochastic rounding in quantization
+    quant_last_layer (bool) : quantize weights of last layer
     
   :return:
     pre_out (tf.Tensor) : result of sequence of convolutions
     
   """
   
+  map_data_format = {'channels_first' : 'NCW', 'channels_last' : 'NWC' }
   
   quantized_weights = []
   original_weights = []
@@ -200,6 +205,7 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
   else:
     conv_op = tf.nn.conv1d
   
+  channels_axis = 1 if data_format == "NCW" else -1
   
   prev_layer = inputs
   
@@ -207,13 +213,11 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
     layer_name = conv_type + '_layer_' + str(layer)
     with tf.variable_scope(layer_name,reuse=tf.AUTO_REUSE):
       
-      channels_axis = 1 if data_format == "NCW" else -1
-      
       in_channels = prev_layer.get_shape().as_list()[channels_axis]
       
       kernel,num_filters = widths[layer], filters[layer]
       
-      W = tf.get_variable('W_{}'.format(str(layer)), [kernel,in_channels,num_filters])
+      W = tf.get_variable('quant_kernel_{}'.format(str(layer)), [kernel,in_channels,num_filters])
       
       original_weights.append(W)
       
@@ -222,7 +226,7 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
       quantized_weights.append(quant_W)
       
       conv = conv_op(value = prev_layer,filters = quant_W, stride = strides[layer], padding = 'SAME',
-                          data_format= data_format, name = conv_type)
+                          data_format= map_data_format.get(data_format), name = conv_type)
       
       
       if batchnorm:
@@ -245,10 +249,30 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
       
       tf.summary.histogram(layer_name, prev_layer)
       
-  return prev_layer,quantized_weights,original_weights  
+    
+  with tf.variable_scope('logit_weights',reuse=tf.AUTO_REUSE):
+    
+    in_channels = prev_layer.get_shape().as_list()[channels_axis]
+    
+    W_logits = tf.get_variable('W_logits', [1,in_channels,vocab_size])
+    
+    original_weights.append(W_logits)
+    
+    quantized_weights.append(W_logits)
+    
+    if quant_last_layer:
+    
+      W_logits = quantize_uniform(tensor = W, s = s, bucket_size = bucket_size, stochastic = stochastic)
+    
+      quantized_weights[-1] = W_logits
+    
+    logits = conv_op(value = prev_layer,filters = W_logits, stride = 1, padding = 'SAME',
+                        data_format= map_data_format.get(data_format), name = conv_type)
+      
+  return logits,quantized_weights,original_weights  
 
 
-def quant_clip_and_step(optimizer, loss, quantized_weights, original_weights, clipping):
+def quant_clip_and_step(optimizer, loss,clipping,quantized_weights, original_weights):
   """
   Helper to compute/apply gradients with clipping.
   
