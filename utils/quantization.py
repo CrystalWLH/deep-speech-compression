@@ -157,7 +157,13 @@ def quantize_uniform(tensor,s,bucket_size,stochastic):
       
     else:
       
-      raise NotImplementedError("Sorry! Stochastic rounding not implemented yet!")
+      l_vector = tf.floor(tensor * s)
+      probabilities = s * tensor - l_vector
+      tensor = l_vector / s 
+      
+      curr_rand = tf.random_uniform(tf.shape(tensor))
+      curr_rand = tf.cast(curr_rand <= probabilities, tf.float32)
+      tensor = tensor + curr_rand * 1/s
       
     tensor = scaling.inv_linear_scale(tensor)
   
@@ -201,7 +207,7 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
   s = 2 ** num_bits 
   
   if conv_type == 'gated_conv':
-    raise ValueError("Sorry quantized gated convolutions are not implemented!")
+    raise NotImplementedError("Sorry quantized gated convolutions are not implemented yet!")
   else:
     conv_op = tf.nn.conv1d
   
@@ -250,11 +256,11 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
       tf.summary.histogram(layer_name, prev_layer)
       
     
-  with tf.variable_scope('logit_weights',reuse=tf.AUTO_REUSE):
+  with tf.variable_scope('logits',reuse=tf.AUTO_REUSE):
     
     in_channels = prev_layer.get_shape().as_list()[channels_axis]
     
-    W_logits = tf.get_variable('W_logits', [1,in_channels,vocab_size])
+    W_logits = tf.get_variable('logits', [1,in_channels,vocab_size])
     
     original_weights.append(W_logits)
     
@@ -267,7 +273,7 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
       quantized_weights[-1] = W_logits
     
     logits = conv_op(value = prev_layer,filters = W_logits, stride = 1, padding = 'SAME',
-                        data_format= map_data_format.get(data_format), name = conv_type)
+                        data_format= map_data_format.get(data_format), name = 'logits')
       
   return logits,quantized_weights,original_weights  
 
@@ -317,7 +323,7 @@ if __name__ == "__main__":
   
   pre_out = quant_conv_sequence(inputs = features, conv_type = 'quant_conv',filters = [32,32],widths = [7,7],strides = [1,1],
                                 activation = tf.nn.relu,data_format = "NWC",dropouts = [0,0],batchnorm = False,
-                                train = False,num_bits = 4, bucket_size = 256,stochastic = False)
+                                train = False,num_bits = 4, bucket_size = 256,stochastic = True, quant_last_layer = False, vocab_size = 28)
   
   print(pre_out)
 

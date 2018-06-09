@@ -260,7 +260,7 @@ def student_model_function(features, labels, mode, params):
     
 #   "Since the magnitudes of the gradients produced by the soft targets scale as 1/T^2
 #   it is important to multiply them by T^2 when using both hard and soft targets"  
-    loss =  ((1 - alpha) * ctc_loss)  +  ((alpha * xent_soft_targets))  * sq_temper
+    loss =  ((1 - alpha) * ctc_loss)  +  (alpha * xent_soft_targets  * sq_temper)
     tf.summary.scalar('total_loss', loss)
     
   

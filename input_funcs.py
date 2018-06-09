@@ -60,6 +60,8 @@ def student_input_func(tfrecord_path,tfrecord_logits,vocab_size,input_channels,e
     dataset = dataset.padded_batch(batch_size, padded_shapes= (([input_channels,-1], [-1]), [-1,vocab_size]),
                                                padding_values = ( ( 0. , -1), 0. ))
     
+    dataset = dataset.prefetch(batch_size)
+    
     (audio,labels), logits = dataset.make_one_shot_iterator().get_next()
     
     
@@ -173,6 +175,8 @@ def teacher_input_func(tfrecord_path,input_channels, mode, epochs, batch_size):
           
     dataset = dataset.padded_batch(batch_size, padded_shapes= ([input_channels,-1],[-1]),
                                                padding_values =  (0.,-1))
+    
+    dataset = dataset.prefetch(batch_size)
           
     features,labels = dataset.make_one_shot_iterator().get_next()
       

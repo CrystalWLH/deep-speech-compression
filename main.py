@@ -141,7 +141,7 @@ if __name__ == '__main__':
   
   env_params,params = config2params(args.conf)
     
-  config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1, save_checkpoints_steps=20)
+  config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1, save_checkpoints_steps=1000)
   
   logging_hook = tf.train.LoggingTensorHook({"ler": "ler"}, every_n_iter=1000)
   
@@ -162,7 +162,7 @@ if __name__ == '__main__':
                                   batch_size = env_params.get('batch_size'))
                                   
 
-      estimator.train(input_fn= input_fn, hooks = [logging_hook])
+      estimator.train(input_fn= input_fn)
       
     elif args.mode == "eval":
       
@@ -220,12 +220,12 @@ if __name__ == '__main__':
                                   batch_size = env_params.get('batch_size')
                                   )
         
-      estimator.train(input_fn= input_fn, hooks = [logging_hook])
+      estimator.train(input_fn= input_fn)
     
     elif args.mode == "eval":
       
       def input_fn():
-        return student_input_func(tfrecord_path = env_params.get('train_data'),
+        return student_input_func(tfrecord_path = env_params.get('eval_data'),
                                   tfrecord_logits = env_params.get('teacher_logits'),
                                   vocab_size = len(env_params.get('char2idx')),
                                   input_channels = env_params.get('input_channels'), 
@@ -241,7 +241,7 @@ if __name__ == '__main__':
     elif args.mode == "predict":
       
       def input_fn():
-        return student_input_func(tfrecord_path = env_params.get('train_data'),
+        return student_input_func(tfrecord_path = env_params.get('test_data'),
                                   tfrecord_logits = env_params.get('teacher_logits'),
                                   vocab_size = len(env_params.get('char2idx')),
                                   input_channels = env_params.get('input_channels'), 
