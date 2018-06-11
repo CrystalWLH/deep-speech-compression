@@ -97,7 +97,8 @@ def config2params(config):
   
   if not env_params['input_channels']:
     logger.warning("Number of input channels is not specified! Please provide this field")
-    
+  
+  params['char2idx'] = env_params['char2idx']
   params['adam_lr'] = configuration['TRAIN'].getfloat('adam_lr',1e-4)
   params['adam_eps'] = configuration['TRAIN'].getfloat('adam_eps',1e-8)
   params['vocab_size'] = len(env_params.get('char2idx'))
@@ -171,7 +172,7 @@ if __name__ == '__main__':
                                     input_channels = env_params.get('input_channels'),
                                     mode = 'eval',
                                     epochs = 1,
-                                    batch_size =  env_params.get('batch_size')
+                                    batch_size =  1#env_params.get('batch_size')
                                     )
       
       

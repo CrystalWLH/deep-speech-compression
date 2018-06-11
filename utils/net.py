@@ -116,8 +116,8 @@ def clip_and_step(optimizer, loss, clipping):
 
 def length(batch):
   """
-  Get length of sequences in a batch of logits. Since logits are in (max_length,batch,channles) 
-  they are transposed to `channels_last` format (batch, max_length, channels). If `channels_first`.
+  Get length of sequences in a batch of logits. Expects input in format (batch, max_length, channels). Since logits are in (max_length,batch,channles) 
+  they are transposed to `channels_last`. 
   
   :param:
     batch (tf.Tensor) : 3D input features 

@@ -10,6 +10,8 @@ import tensorflow as tf
 from utils.net import convolutional_sequence,length,clip_and_step
 from utils.quantization import quant_conv_sequence,quant_clip_and_step
 
+
+
  
 def teacher_model_function(features, labels, mode, params):
   """
@@ -70,17 +72,18 @@ def teacher_model_function(features, labels, mode, params):
   seqs_len = length(logits)
   
   with tf.name_scope('decoder'):
+    
     sparse_decoded, log_prob = tf.nn.ctc_greedy_decoder(logits, seqs_len)
+    
+    sparse_decoded = sparse_decoded[0]
+      
+    dense_decoded = tf.sparse_to_dense(sparse_decoded.indices,
+                                              sparse_decoded.dense_shape,
+                                              sparse_decoded.values)
   
   if mode == tf.estimator.ModeKeys.PREDICT:
         
     with tf.name_scope('predictions'):
-          
-      sparse_decoded = sparse_decoded[0]
-      
-      dense_decoded = tf.sparse_to_dense(sparse_decoded.indices,
-                                              sparse_decoded.dense_shape,
-                                              sparse_decoded.values)
   
       pred = {'decoding' : dense_decoded, 'log_prob' : log_prob, 'logits' : logits}
       
@@ -89,10 +92,10 @@ def teacher_model_function(features, labels, mode, params):
     
   sparse_labels = tf.contrib.layers.dense_to_sparse(labels, eos_token = -1)
       
-  ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels), name = 'ler')
-    
-  tf.summary.scalar('ler',ler)
-      
+#  ler = tf.reduce_mean(tf.edit_distance(tf.cast(sparse_decoded[0], tf.int32), sparse_labels), name = 'ler')
+#    
+#  tf.summary.scalar('ler',ler)
+#      
 
   with tf.name_scope('loss'):
     
@@ -126,11 +129,48 @@ def teacher_model_function(features, labels, mode, params):
   
   assert mode == tf.estimator.ModeKeys.EVAL
   
-  mean_ler, op = tf.metrics.mean(ler)
-  
-  metrics = {"ler": (mean_ler, op)}
-  
-  return tf.estimator.EstimatorSpec(mode=mode, loss = loss, eval_metric_ops=metrics)
+#  def init_fn(scaffold, sess):
+#    tf.tables_initializer().run(session = sess)
+#  
+#  table = tf.contrib.lookup.index_to_string_table_from_file('./test_lookup',key_column_index = 0, value_column_index = 1, delimiter = '\t')
+#  
+#  scaffold = tf.train.Scaffold(init_fn=init_fn)
+#  
+#  char_decoded = table.lookup(tf.cast(tf.squeeze(dense_decoded),tf.int64))
+#  
+#  print(char_decoded)
+#  
+#  char_labels = table.lookup(tf.cast(tf.squeeze(labels),tf.int64))
+#  
+#  print(char_labels)
+#  
+#  with tf.name_scope('ler'):
+#  
+#    sparse_char_decoded = tf.contrib.layers.dense_to_sparse(char_decoded, eos_token = 'UNK')
+#    
+#    sparse_char_labels = tf.contrib.layers.dense_to_sparse(char_labels, eos_token = 'UNK')
+#    
+#    ler = tf.reduce_mean(tf.edit_distance(sparse_char_labels, sparse_char_decoded), name = 'ler')
+#    
+#  with tf.name_scope('wer'):
+#    
+#    word_decoded = tf.string_join([char_decoded])
+#    
+#    print(word_decoded)
+#    
+#    word_labels = tf.string_join([char_labels])
+#    
+#    print(word_labels)
+#    
+#    sparse_word_decoded = tf.string_split(word_decoded)
+#    
+#    sparse_word_labels = tf.string_split(word_labels)
+#    
+#    wer = tf.reduce_mean(tf.edit_distance(sparse_word_labels, sparse_word_decoded), name = 'wer')
+#    
+#  metrics = {"ler" : tf.metrics.mean(ler), "wer" : tf.metrics.mean(wer) }
+#  
+  return tf.estimator.EstimatorSpec(mode=mode, loss = loss, eval_metric_ops=metrics, scaffold = scaffold)
 
 
 def student_model_function(features, labels, mode, params):
@@ -291,7 +331,7 @@ def student_model_function(features, labels, mode, params):
   
   metrics = {"ler": (mean_ler, op)}
   
-  return tf.estimator.EstimatorSpec(mode=mode, loss = loss, eval_metric_ops=metrics)
+  return tf.estimator.EstimatorSpec(mode=mode, loss = ctc_loss, eval_metric_ops=metrics)
 
 
 
