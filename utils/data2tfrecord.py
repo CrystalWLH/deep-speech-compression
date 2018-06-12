@@ -291,9 +291,7 @@ if __name__ == "__main__":
   if not args.cached_ids2trans:
   
     chars_set, ids2trans = create_vocab_id2transcript(args.data)
-    
-    chars = [c for ids,trans in ids2trans.items() for c in trans]
-    
+        
     save_pickle(ids2trans, args.out, 'ids2transc.pkl')
       
     if args.loss == 'ctc':

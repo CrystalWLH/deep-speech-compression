@@ -172,7 +172,7 @@ if __name__ == '__main__':
                                     input_channels = env_params.get('input_channels'),
                                     mode = 'eval',
                                     epochs = 1,
-                                    batch_size =  1#env_params.get('batch_size')
+                                    batch_size = env_params.get('batch_size')
                                     )
       
       
@@ -187,7 +187,7 @@ if __name__ == '__main__':
                                   input_channels = env_params.get('input_channels'),
                                   mode = 'predict', 
                                   epochs = 1,
-                                  batch_size = 1 )
+                                  batch_size = env_params.get('batch_size'))
       
       
       
@@ -195,7 +195,7 @@ if __name__ == '__main__':
       for idx,batch_pred in enumerate(estimator.predict(input_fn=input_fn, yield_single_examples = False)):
         if idx == 0:
           for p in batch_pred['decoding']: 
-            print(decode_sequence(p,idx2char))
+            print(p)
         else:
           break
           
@@ -245,16 +245,17 @@ if __name__ == '__main__':
         return student_input_func(tfrecord_path = env_params.get('test_data'),
                                   tfrecord_logits = env_params.get('teacher_logits'),
                                   vocab_size = len(env_params.get('char2idx')),
-                                  input_channels = env_params.get('input_channels'), 
+                                  input_channels = env_params.get('input_channels'),
+                                  mode = 'predict',
                                   epochs = 1,
-                                  batch_size = 1 )
+                                  batch_size = env_params.get('batch_size') )
       
       
       idx2char = decoder_dict(env_params.get('char2idx'))
       for idx,batch_pred in enumerate(estimator.predict(input_fn=input_fn, yield_single_examples = False)):
         if idx == 0:
           for p in batch_pred['decoding']: 
-            print(decode_sequence(p,idx2char))
+            print(p)
         else:
           break
 
