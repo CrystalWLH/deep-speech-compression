@@ -238,15 +238,15 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
       if batchnorm:
         conv = tf.layers.batch_normalization(conv, axis=1 if data_format == "NCW" else -1,
                                              training=train, name="bn")
-#      else:
-#        
-#        bias = tf.get_variable('b_{}'.format(str(layer)), [num_filters])
-#        original_weights.append(bias)
-#        
-#        quant_bias = quantize_uniform(tensor = bias, s = s, bucket_size = bucket_size, stochastic = stochastic)
-#        quantized_weights.append(quant_bias)
-#        
-#        conv = tf.nn.add_bias(conv, quant_bias, data_format)
+      else:
+        
+        bias = tf.get_variable('b_{}'.format(str(layer)), [num_filters])
+        original_weights.append(bias)
+        
+        quant_bias = quantize_uniform(tensor = bias, s = s, bucket_size = bucket_size, stochastic = stochastic)
+        quantized_weights.append(quant_bias)
+        
+        conv = tf.nn.add_bias(conv, quant_bias, data_format)
         
       conv = activation(conv)
       prev_layer = conv
