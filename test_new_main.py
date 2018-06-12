@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Created on Tue Jun 12 16:50:09 2018
+
+@author: Samuele Garda
+"""
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
 Created on Sun May  6 16:12:41 2018
 
 @author: Samuele Garda
@@ -13,7 +21,7 @@ from configparser import ConfigParser
 import json
 import tensorflow as tf
 from input_funcs import teacher_input_func, student_input_func  
-from models import teacher_model_function, student_model_function,quant_student_model_function
+from models_class import TeacherModel,StudentModel,QuantStudentModel
 from utils.transcription import load_chars2id_from_file
 
 logger = logging.getLogger(__name__)
@@ -163,15 +171,14 @@ if __name__ == '__main__':
   
   env_params,params = config2params(args.conf)
   
-  for k,v in env_params.items() : print(k,v)
-  for k,v in params.items() : print(k,v)
-    
+ 
   config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1, save_checkpoints_steps=1000)
-    
   
   if env_params.get('model_type') == 'teacher':
+    
+    model = TeacherModel(custom_op = env_params.get('knlem_op'))
   
-    estimator = tf.estimator.Estimator(model_fn=teacher_model_function, params=params,
+    estimator = tf.estimator.Estimator(model_fn= model.model_function, params=params,
                                      model_dir= complete_name(env_params,params),
                                      config=config)
     
@@ -223,9 +230,15 @@ if __name__ == '__main__':
           
   elif env_params.get('model_type') == 'student':
     
-    student_function = quant_student_model_function if env_params.get('quantize') else student_model_function
+    if not env_params.get('quantize'):
+      
+      model = StudentModel(custom_op = env_params.get('knlem_op'))
     
-    estimator = tf.estimator.Estimator(model_fn= student_function, params=params,
+    else:
+      
+      model = QuantStudentModel(custom_op = env_params.get('knlem_op')) 
+    
+    estimator = tf.estimator.Estimator(model_fn= model.model_function, params=params,
                                        model_dir= complete_name(env_params,params),
                                        config=config)
     

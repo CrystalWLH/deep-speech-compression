@@ -7,38 +7,51 @@ Created on Fri May  4 15:40:27 2018
 """
 
 import logging
+import operator
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
 
 
-
-def decoder_dict(char2idx):
-  """
-  Create lookup index to character for decoding predictions.
+def save_chars2id_to_file(chars2id, path, file_name):
   
-  :param:
-    char2idx (dict) : lookup char-idx
-  :return:
-    inverse of `char2idx`
-  """
+  sorted_items = sorted(chars2id.items(), key=operator.itemgetter(1))
   
-  return {idx : char for char,idx in char2idx.items()}
-
-
-def decode_sequence(seq, idx2char):
-  """
-  Decode sequence of indices to sequence of characters.
+  path = Path(path).joinpath(file_name)
   
-  :param:
-    seq (list) : list of ints indices
-    idx2char (dict) : idx-char lookup
+  if not path.exists():
+    
+    with open(str(path), 'w') as out_file:
+      for (key,value) in sorted_items:
+        out_file.write("{}\t{}\n".format(key,value))
+  else:
+    
+    raise ValueError("File already existing! Not overwriting...")
+        
+        
+def load_chars2id_from_file(file_name):
+  """
+  Load into dictionary char encoding saved into file
   """
   
-  return [idx2char.get(c) for c in seq]
-
-
+  path = Path(file_name)
+  
+  if path.exists():
+    
+    chars2ids = {}
+    
+    with open(str(path)) as infile:
+      for line in infile:
+        key,value = line.strip('\n').split('\t')
+        chars2ids[int(key)] = value
+    
+    return chars2ids
+  
+  else:
+    
+    raise ValueError("File `{}` not found!".format(file_name))
+      
 def sent_char_to_ids(sent,mapping):
   """
   Map sentece to ids. 

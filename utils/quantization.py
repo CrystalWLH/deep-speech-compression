@@ -188,7 +188,7 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
     data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels) 
     batchnorm (bool) : use batch normalization
     train (bool) : wheter in train mode or not
-    vocab_size (int) : size of output
+    vocab_size (int) : number of classes in logits
     num_bits (int) : number of bits for quantizing weights
     bucket_size(int) : size of buckets for weights
     stochastic (bool) : use stochastic rounding in quantization

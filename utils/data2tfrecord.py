@@ -11,11 +11,12 @@ import logging
 import tensorflow as tf
 from pathlib import Path
 import pickle
-from utils.transcription import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions
+from utils.transcription import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_chars2id_to_file,load_chars2id_from_file
 from utils.audio import partial_get_audio_func,get_audio_id
 import multiprocessing as mp
 import time
 from functools import partial
+
 #######################################
 # CTC LOSS : LARGEST VALUE 
 # OF CHAR INIDICES MUST BE FOR `BLANK`
@@ -297,8 +298,8 @@ if __name__ == "__main__":
     if args.loss == 'ctc':
       
       chars2ids = get_ctc_char2ids(chars_set)
-      
-      save_pickle(chars2ids, args.out, 'ctc_vocab.pkl')
+            
+      save_chars2id_to_file(chars2ids, args.out, 'ctc_vocab.txt')
       
     elif args.loss == 'asg':
       
@@ -312,7 +313,7 @@ if __name__ == "__main__":
     
     logger.info("Loading cached id-chars lookup")
     
-    chars2ids = load_pickle(args.cached_chars2ids)
+    chars2ids = load_chars2id_from_file(args.cached_chars2ids)
       
   encoded_transcriptions = get_id2encoded_transcriptions(ids2trans, chars2ids)
   
