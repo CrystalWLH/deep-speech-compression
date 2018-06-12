@@ -9,6 +9,11 @@ __pycache__/
 # external resources
 data/
 models/
+kenlm/data/alphabet.txt
+kenlm/data/lm.binary
+kenlm/data/trie
+kenlm/kenlm_op/libctc_decoder_with_kenlm.so
+
 
 # Distribution / packaging
 .Python
