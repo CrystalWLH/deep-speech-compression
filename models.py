@@ -565,11 +565,10 @@ class QuantStudentModel(StudentModel):
                               strides = strides,
                               activation = activation,
                               data_format = data_format,
-                              dropouts =dropouts,
-                              batchnorm = bn,
+                              dropouts = dropouts,
+                              batchnorm = batchnorm,
                               vocab_size = vocab_size,
                               train = mode,
-                              vocab_size = vocab_size,
                               num_bits = num_bits,
                               bucket_size = bucket_size,
                               stochastic = stochastic,
@@ -597,16 +596,25 @@ class QuantStudentModel(StudentModel):
       if bn:
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
-          train_op, quant_global_norm, orig_global_norm,orig_grads,quant_grads = quant_clip_and_step(optimizer, loss, clipping,
+          train_op, quant_global_norm, orig_global_norm, orig_grads = quant_clip_and_step(optimizer, loss, clipping,
                                                                                                      quant_weights, original_weights)
       else:
-        train_op, quant_global_norm, orig_global_norm,orig_grads,quant_grads = quant_clip_and_step(optimizer, loss, clipping,
+        train_op, quant_global_norm, orig_global_norm, orig_grads = quant_clip_and_step(optimizer, loss, clipping,
                                                                                                    quant_weights, original_weights)
-        
+    
+    
     with tf.name_scope("visualization"):
-      for idx,(g_orig, g_quant) in enumerate(zip(orig_grads,quant_grads)):
-        tf.summary.scalar("model/conv_layer_{}/conv/kernel_gradient_norm".format(idx), tf.norm(g_orig))
-        tf.summary.scalar("model/quant_conv_layer_{}/conv/kernel_gradient_norm".format(idx), tf.norm(g_quant))
+      kernels = 0
+      for g_orig in orig_grads:
+        
+        if len(g_orig.get_shape().as_list()) < 2:
+          pass
+        else:
+          if 'logits' in g_orig.name:
+            tf.summary.scalar("model/logits/kernel_gradient_norm", tf.norm(g_orig))
+          else:
+            tf.summary.scalar("model/conv_layer_{}/conv/kernel_gradient_norm".format(kernels), tf.norm(g_orig))
+            kernels += 1
   
       tf.summary.scalar("global_gradient_norm", orig_global_norm)
       tf.summary.scalar("quant_global_gradient_norm", quant_global_norm)
@@ -640,7 +648,7 @@ class QuantStudentModel(StudentModel):
                              activation = params.get('activation'),
                              data_format = params.get('data_format'),
                              dropouts = params.get('dropouts'),
-                             bn = params.get('bn'),
+                             batchnorm = params.get('bn'),
                              vocab_size = params.get('vocab_size'),
                              num_bits = params.get('num_bits'),
                              bucket_size = params.get('bucket_size'),

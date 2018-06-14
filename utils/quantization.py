@@ -78,42 +78,40 @@ class Scaling():
     self.original_dims = tf.shape(tensor)
     self.original_length = tf.size(tensor)
     
-    with tf.variable_scope("scaling"):
+    tensor = bucket_tensor(tensor, bucket_size)
+          
+    if not bucket_size:
+      tensor = tf.reshape(tensor,[-1])
     
-      tensor = bucket_tensor(tensor, bucket_size)
-            
-      if not bucket_size:
-        tensor = tf.reshape(tensor,[-1])
+    axis = 0 if not bucket_size else 1
+    
+    min_rows = tf.reduce_min(tensor, axis = axis, keepdims = True)   
+    max_rows = tf.reduce_max(tensor, axis = axis, keepdims = True)    
+    
+    alpha = max_rows - min_rows
+    beta = min_rows
+    
+    if not bucket_size:
+      alpha = tf.cond(tf.squeeze(alpha) < self.tol_diff_zero, lambda : 1.0, lambda : alpha)
       
-      axis = 0 if not bucket_size else 1
+    else:
       
-      min_rows = tf.reduce_min(tensor, axis = axis, keepdims = True)   
-      max_rows = tf.reduce_max(tensor, axis = axis, keepdims = True)    
+      #https://www.tensorflow.org/api_docs/python/tf/scatter_nd
+      below_idxs = tf.where(alpha <= self.tol_diff_zero)
+      below_updates = tf.ones(tf.size(below_idxs))
       
-      alpha = max_rows - min_rows
-      beta = min_rows
+      above_idxs = tf.where(alpha > self.tol_diff_zero)
+      above_updates = tf.gather_nd(alpha,above_idxs)
       
-      if not bucket_size:
-        alpha = tf.cond(tf.squeeze(alpha) < self.tol_diff_zero, lambda : 1.0, lambda : alpha)
-        
-      else:
-        
-        #https://www.tensorflow.org/api_docs/python/tf/scatter_nd
-        below_idxs = tf.where(alpha <= self.tol_diff_zero)
-        below_updates = tf.ones(tf.size(below_idxs))
-        
-        above_idxs = tf.where(alpha > self.tol_diff_zero)
-        above_updates = tf.gather_nd(alpha,above_idxs)
-        
-        indices = tf.concat([below_idxs,above_idxs],axis = 0)
-        updates = tf.concat([below_updates,above_updates], axis = 0)
-         
-        alpha = tf.scatter_nd(indices, updates, tf.shape(alpha, out_type = tf.int64))
-        
-      self.alpha = alpha
-      self.beta = beta
+      indices = tf.concat([below_idxs,above_idxs],axis = 0)
+      updates = tf.concat([below_updates,above_updates], axis = 0)
+       
+      alpha = tf.scatter_nd(indices, updates, tf.shape(alpha, out_type = tf.int64))
       
-      tensor = (tensor - self.beta) / self.alpha
+    self.alpha = alpha
+    self.beta = beta
+    
+    tensor = (tensor - self.beta) / self.alpha
     
     return tensor
   
@@ -215,6 +213,7 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
   """
   
   map_data_format = {'channels_first' : 'NCW', 'channels_last' : 'NWC' }
+  bias_map =  {'channels_first' : 'NCHW', 'channels_last' : 'NHWC' }
   
   quantized_weights = []
   original_weights = []
@@ -238,7 +237,7 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
       
       kernel,num_filters = widths[layer], filters[layer]
       
-      W = tf.get_variable('quant_kernel_{}'.format(str(layer)), [kernel,in_channels,num_filters])
+      W = tf.get_variable('kernel_{}'.format(str(layer)), [kernel,in_channels,num_filters])
       
       original_weights.append(W)
       
@@ -255,13 +254,13 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
                                              training=train, name="bn")
       else:
         
-        bias = tf.get_variable('b_{}'.format(str(layer)), [num_filters])
+        bias = tf.get_variable('bias_{}'.format(str(layer)), [num_filters])
         original_weights.append(bias)
         
         quant_bias = quantize_uniform(tensor = bias, s = s, bucket_size = bucket_size, stochastic = stochastic)
         quantized_weights.append(quant_bias)
         
-        conv = tf.nn.add_bias(conv, quant_bias, data_format)
+        conv = tf.nn.bias_add(conv, quant_bias, bias_map.get(data_format))
         
       conv = activation(conv)
       prev_layer = conv
@@ -293,7 +292,7 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
   return logits,quantized_weights,original_weights  
 
 
-def quant_clip_and_step(optimizer, loss,clipping,quantized_weights, original_weights):
+def quant_clip_and_step(optimizer,loss,clipping,quantized_weights, original_weights):
   """
   Helper to compute/apply gradients with clipping with quantized weights.
   
@@ -312,10 +311,10 @@ def quant_clip_and_step(optimizer, loss,clipping,quantized_weights, original_wei
   Global norm before clipping for quantized weights
   
   """
+
+  quantized_grads = tf.gradients(loss, quantized_weights, name = 'quantized_grads')
   
-  quantized_grads = tf.gradients(loss, quantized_weights,name = 'quant_grads')
-  
-  original_grads = tf.gradients(loss, original_weights, name = 'orig_grads')
+  original_grads = tf.gradients(loss, original_weights, name = 'original_grads')
   
   grads, varis = quantized_grads,original_weights
         
@@ -334,7 +333,7 @@ def quant_clip_and_step(optimizer, loss,clipping,quantized_weights, original_wei
                                        global_step=tf.train.get_global_step(),
                                        name="train_step")
   
-  return train_op, quant_global_norm, original_global_norm,original_grads,quantized_grads  
+  return train_op, quant_global_norm, original_global_norm,original_grads  
       
     
 if __name__ == "__main__":

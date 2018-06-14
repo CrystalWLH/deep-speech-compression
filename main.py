@@ -21,7 +21,7 @@ from configparser import ConfigParser
 import json
 import tensorflow as tf
 from input_funcs import teacher_input_func, student_input_func  
-from models_class import TeacherModel,StudentModel,QuantStudentModel
+from models import TeacherModel,StudentModel,QuantStudentModel
 from utils.transcription import load_chars2id_from_file
 
 logger = logging.getLogger(__name__)
