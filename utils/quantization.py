@@ -15,7 +15,7 @@ def bucket_tensor(tensor,bucket_size):
   Avoid magnitude imbalance when scaling.
   
   :param:
-    tensor (tf.Tensor) : tensor 
+    tensor (tf.Tensor) : original weight varibale 
     
     bucket_size (int) : size of buckets for reshaping
   
@@ -123,12 +123,12 @@ class Scaling():
     Inverse of scaling function.
     
     :param:
-      tensor (tf.Tensor) : tensor 
+      tensor (tf.Tensor) : scaled weight varibale 
       
       bucket_size (int) : size of buckets for reshaping
     
     :return:
-      tensor (tf.Tensor) : original tensor
+      tensor (tf.Tensor) : original weight varibale 
     """
     
     tensor = (tensor * self.alpha) + self.beta
@@ -142,6 +142,21 @@ class Scaling():
   
 
 def quantize_uniform(tensor,s,bucket_size,stochastic):
+  """
+  Uniform quantization of weights.
+  If stochastic rounding is enabled use random uniform distirbution for rounding values.
+  
+  :params:
+    tensor (tf.Tensor) : original weight varibale 
+    s (int) : actual number of bits
+    bucket_size (int) : size of buckets for reshaping
+    stochastic (bool) : use stochastic rounding for quantization
+  
+  :return:
+    
+    tensor (tf.Tensor) : quantized weight varibale
+  
+  """
   
   with tf.variable_scope("quantize_weights"):
   
@@ -280,17 +295,22 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
 
 def quant_clip_and_step(optimizer, loss,clipping,quantized_weights, original_weights):
   """
-  Helper to compute/apply gradients with clipping.
+  Helper to compute/apply gradients with clipping with quantized weights.
   
   Parameters:
-  optimizer: Subclass of tf.train.Optimizer (e.g. GradientDescent or Adam).
-  loss: Scalar loss tensor.
-  clipping: Threshold to use for clipping.
+  optimizer (tf.train.Optimizer) : Subclass of tf.train.Optimizer (e.g. GradientDescent or Adam).
+  loss (scalar) : Scalar loss tensor.
+  clipping (int) : Threshold to use for clipping.
+  quant_weights (list) : list of tf.Tensors (quantized weights)
+  original_weights (list) : list of tf.Variables (original weights)
   
   Returns:
   The train op.
-  List of gradient, variable tuples, where gradients have been clipped.
-  Global norm before clipping.
+  List of gradient of original weights
+  List of gradient of quantized weights
+  Global norm before clipping for original weights
+  Global norm before clipping for quantized weights
+  
   """
   
   quantized_grads = tf.gradients(loss, quantized_weights,name = 'quant_grads')

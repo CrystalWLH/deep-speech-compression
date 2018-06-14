@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Created on Tue Jun 12 16:50:09 2018
+
+@author: Samuele Garda
+"""
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
 Created on Sun May  6 16:12:41 2018
 
 @author: Samuele Garda
@@ -13,7 +21,7 @@ from configparser import ConfigParser
 import json
 import tensorflow as tf
 from input_funcs import teacher_input_func, student_input_func  
-from models import teacher_model_function, student_model_function,quant_student_model_function
+from models_class import TeacherModel,StudentModel,QuantStudentModel
 from utils.transcription import load_chars2id_from_file
 
 logger = logging.getLogger(__name__)
@@ -163,143 +171,62 @@ if __name__ == '__main__':
   
   env_params,params = config2params(args.conf)
   
-  for k,v in env_params.items() : print(k,v)
-  for k,v in params.items() : print(k,v)
-    
+ 
   config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1, save_checkpoints_steps=1000)
-    
   
   if env_params.get('model_type') == 'teacher':
-  
-    estimator = tf.estimator.Estimator(model_fn=teacher_model_function, params=params,
-                                     model_dir= complete_name(env_params,params),
-                                     config=config)
     
-    if args.mode == "train":
+    model = TeacherModel(custom_op = env_params.get('knlem_op'))
       
-      def input_fn():
-        return teacher_input_func(tfrecord_path = env_params.get('train_data'),
-                                  input_channels = env_params.get('input_channels'),
-                                  mode = 'train',
-                                  epochs = env_params.get('epochs'),
-                                  batch_size = env_params.get('batch_size'))
-                                  
-
-      estimator.train(input_fn= input_fn)
+    def input_fn():
+      return teacher_input_func(tfrecord_path = env_params.get('train_data'),
+                                input_channels = env_params.get('input_channels'),
+                                mode = args.mode,
+                                epochs = env_params.get('epochs'),
+                                batch_size = env_params.get('batch_size') if args.mode == 'train' else 1
+                                )
       
-    elif args.mode == "eval":
-      
-      def input_fn():
-        return teacher_input_func(tfrecord_path = env_params.get('eval_data'),
-                                    input_channels = env_params.get('input_channels'),
-                                    mode = 'eval',
-                                    epochs = 1,
-                                    batch_size = env_params.get('batch_size')
-                                    )
-      
-      
-     #for checkpoint in tf.train.get_checkpoint_state('./models/w2l_v1_bn0_bs5_relu_c0_conv2_do0').all_model_checkpoint_paths:
-      estimator.evaluate(input_fn=input_fn)
-
-  
-    elif args.mode == "predict":
-      
-      def input_fn():
-        return teacher_input_func(tfrecord_path = env_params.get('test_data'),
-                                  input_channels = env_params.get('input_channels'),
-                                  mode = 'predict', 
-                                  epochs = 1,
-                                  batch_size = env_params.get('batch_size'))
-      
-      
-      
-      for idx,batch_pred in enumerate(estimator.predict(input_fn=input_fn, yield_single_examples = False)):
-        if idx == 0:
-          for p in batch_pred['decoding']: 
-            print(p)
-        else:
-          break
-          
-          
   elif env_params.get('model_type') == 'student':
     
-    student_function = quant_student_model_function if env_params.get('quantize') else student_model_function
+    if not env_params.get('quantize'):
+      
+      model = StudentModel(custom_op = env_params.get('knlem_op'))
     
-    estimator = tf.estimator.Estimator(model_fn= student_function, params=params,
-                                       model_dir= complete_name(env_params,params),
-                                       config=config)
+    else:
+      
+      model = QuantStudentModel(custom_op = env_params.get('knlem_op')) 
+      
+  
+    def input_fn():
+      return student_input_func(tfrecord_path = env_params.get('train_data'),
+                                tfrecord_logits = env_params.get('teacher_logits'),
+                                vocab_size = env_params.get('vocab_size'),
+                                input_channels = env_params.get('input_channels'), 
+                                mode = args.mode,
+                                epochs = env_params.get('epochs'),
+                                batch_size =env_params.get('batch_size') if args.mode == 'train' else 1
+                                )
+  
+  estimator = tf.estimator.Estimator(model_fn= model.model_function, params=params,
+                                     model_dir= complete_name(env_params,params),
+                                     config=config)
+
+  if args.mode == 'train':
+  
+    estimator.train(input_fn= input_fn)
     
+  elif args.mode == 'eval':
     
-    if args.mode == 'train':
-      
-      def input_fn():
-        return student_input_func(tfrecord_path = env_params.get('train_data'),
-                                  tfrecord_logits = env_params.get('teacher_logits'),
-                                  vocab_size = env_params.get('vocab_size'),
-                                  input_channels = env_params.get('input_channels'), 
-                                  mode = 'train',
-                                  epochs = env_params.get('epochs'),
-                                  batch_size = env_params.get('batch_size')
-                                  )
-        
-      estimator.train(input_fn= input_fn)
+    estimator.evaluate(input_fn=input_fn)
     
-    elif args.mode == "eval":
-      
-      def input_fn():
-        return student_input_func(tfrecord_path = env_params.get('eval_data'),
-                                  tfrecord_logits = env_params.get('teacher_logits'),
-                                  vocab_size = env_params.get('vocab_size'),
-                                  input_channels = env_params.get('input_channels'), 
-                                  mode = 'eval',
-                                  epochs = 1,
-                                  batch_size =  env_params.get('batch_size')
-                                  )
-      
-      
-     #for checkpoint in tf.train.get_checkpoint_state('./models/w2l_v1_bn0_bs5_relu_c0_conv2_do0').all_model_checkpoint_paths:
-      estimator.evaluate(input_fn=input_fn)
-      
-    elif args.mode == "predict":
-      
-      def input_fn():
-        return student_input_func(tfrecord_path = env_params.get('test_data'),
-                                  tfrecord_logits = env_params.get('teacher_logits'),
-                                  vocab_size = env_params.get('vocab_size'),
-                                  input_channels = env_params.get('input_channels'),
-                                  mode = 'predict',
-                                  epochs = 1,
-                                  batch_size = env_params.get('batch_size') )
-      
-      
-      for idx,batch_pred in enumerate(estimator.predict(input_fn=input_fn, yield_single_examples = False)):
-        if idx == 0:
-          for p in batch_pred['decoding']: 
-            print(p)
-        else:
-          break
-
-      
+  elif args.mode == 'predict':
     
-
-        
-        
-        
-        
-        
-        
-      
-      
-
-  
-  
-
-
-  
-  
-  
-  
-  
+    for idx,batch_pred in enumerate(estimator.predict(input_fn=input_fn, yield_single_examples = False)):
+      if idx == 0:
+        for p in batch_pred['decoding']: 
+          print(p)
+      else:
+        break
   
   
   

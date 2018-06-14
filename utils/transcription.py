@@ -15,6 +15,14 @@ logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(messag
 
 
 def save_chars2id_to_file(chars2id, path, file_name):
+  """
+  Save chars -> ids lookup table to file in <value>\t<character>\n format.
+  
+  :params:
+    chars2id (dict) : characters lookup 
+    path (str) : path to folder
+    file_name (str) : name of file 
+  """
   
   sorted_items = sorted(chars2id.items(), key=operator.itemgetter(1))
   
@@ -33,6 +41,11 @@ def save_chars2id_to_file(chars2id, path, file_name):
 def load_chars2id_from_file(file_name):
   """
   Load into dictionary char encoding saved into file
+  
+  :params:
+    file_name (str) : path to file where lookup is saved
+  :return:
+    chars2id (dict) : characters lookup 
   """
   
   path = Path(file_name)
