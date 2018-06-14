@@ -94,7 +94,14 @@ def get_ctc_char2ids(chars_set):
     char2id (dict) : character lookup
   """
   
-  char2id = {c : idx for idx,c in enumerate(chars_set)}
+  char2id = {}
+  char2id[' '] = 0
+  
+  chars_set.remove(' ')
+  
+  for idx,char in enumerate(chars_set):
+    char2id[char] = idx
+  
   char2id['blank'] = len(char2id)
   
   logger.info("Modified characters id lookup for compatibility with CTC loss")

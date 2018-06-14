@@ -41,6 +41,17 @@ def parse_arguments():
   return args
 
 
+def get_data_path(env_params,mode):
+  
+  if mode == 'train':
+    data = env_params.get('train_data')
+  elif mode == 'eval':
+    data = env_params.get('eval_data')
+  elif mode == 'predict':
+    data = env_params.get('predict_data')
+    
+  return data
+
 def complete_name(env_params,params):
   """
   Create name excplicting network hyperparameters.
@@ -179,7 +190,7 @@ if __name__ == '__main__':
     model = TeacherModel(custom_op = env_params.get('knlem_op'))
       
     def input_fn():
-      return teacher_input_func(tfrecord_path = env_params.get('train_data'),
+      return teacher_input_func(tfrecord_path = get_data_path(env_params,args.mode),
                                 input_channels = env_params.get('input_channels'),
                                 mode = args.mode,
                                 epochs = env_params.get('epochs'),
@@ -198,7 +209,7 @@ if __name__ == '__main__':
       
   
     def input_fn():
-      return student_input_func(tfrecord_path = env_params.get('train_data'),
+      return student_input_func(tfrecord_path = get_data_path(env_params,args.mode),
                                 tfrecord_logits = env_params.get('teacher_logits'),
                                 vocab_size = env_params.get('vocab_size'),
                                 input_channels = env_params.get('input_channels'), 
