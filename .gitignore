@@ -3,12 +3,18 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+
 # C extensions
 *.so
 
 # external resources
 data/
 models/
+kenlm/kenlm_data/alphabet.txt
+kenlm/kenlm_data/lm.binary
+kenlm/kenlm_data/trie
+
+
 
 # Distribution / packaging
 .Python

@@ -15,7 +15,7 @@ def bucket_tensor(tensor,bucket_size):
   Avoid magnitude imbalance when scaling.
   
   :param:
-    tensor (tf.Tensor) : tensor 
+    tensor (tf.Tensor) : original weight varibale 
     
     bucket_size (int) : size of buckets for reshaping
   
@@ -123,12 +123,12 @@ class Scaling():
     Inverse of scaling function.
     
     :param:
-      tensor (tf.Tensor) : tensor 
+      tensor (tf.Tensor) : scaled weight varibale 
       
       bucket_size (int) : size of buckets for reshaping
     
     :return:
-      tensor (tf.Tensor) : original tensor
+      tensor (tf.Tensor) : original weight varibale 
     """
     
     tensor = (tensor * self.alpha) + self.beta
@@ -142,6 +142,21 @@ class Scaling():
   
 
 def quantize_uniform(tensor,s,bucket_size,stochastic):
+  """
+  Uniform quantization of weights.
+  If stochastic rounding is enabled use random uniform distirbution for rounding values.
+  
+  :params:
+    tensor (tf.Tensor) : original weight varibale 
+    s (int) : actual number of bits
+    bucket_size (int) : size of buckets for reshaping
+    stochastic (bool) : use stochastic rounding for quantization
+  
+  :return:
+    
+    tensor (tf.Tensor) : quantized weight varibale
+  
+  """
   
   with tf.variable_scope("quantize_weights"):
   
@@ -188,7 +203,7 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
     data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels) 
     batchnorm (bool) : use batch normalization
     train (bool) : wheter in train mode or not
-    vocab_size (int) : size of output
+    vocab_size (int) : number of classes in logits
     num_bits (int) : number of bits for quantizing weights
     bucket_size(int) : size of buckets for weights
     stochastic (bool) : use stochastic rounding in quantization
@@ -238,15 +253,15 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
       if batchnorm:
         conv = tf.layers.batch_normalization(conv, axis=1 if data_format == "NCW" else -1,
                                              training=train, name="bn")
-#      else:
-#        
-#        bias = tf.get_variable('b_{}'.format(str(layer)), [num_filters])
-#        original_weights.append(bias)
-#        
-#        quant_bias = quantize_uniform(tensor = bias, s = s, bucket_size = bucket_size, stochastic = stochastic)
-#        quantized_weights.append(quant_bias)
-#        
-#        conv = tf.nn.add_bias(conv, quant_bias, data_format)
+      else:
+        
+        bias = tf.get_variable('b_{}'.format(str(layer)), [num_filters])
+        original_weights.append(bias)
+        
+        quant_bias = quantize_uniform(tensor = bias, s = s, bucket_size = bucket_size, stochastic = stochastic)
+        quantized_weights.append(quant_bias)
+        
+        conv = tf.nn.add_bias(conv, quant_bias, data_format)
         
       conv = activation(conv)
       prev_layer = conv
@@ -280,17 +295,22 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
 
 def quant_clip_and_step(optimizer, loss,clipping,quantized_weights, original_weights):
   """
-  Helper to compute/apply gradients with clipping.
+  Helper to compute/apply gradients with clipping with quantized weights.
   
   Parameters:
-  optimizer: Subclass of tf.train.Optimizer (e.g. GradientDescent or Adam).
-  loss: Scalar loss tensor.
-  clipping: Threshold to use for clipping.
+  optimizer (tf.train.Optimizer) : Subclass of tf.train.Optimizer (e.g. GradientDescent or Adam).
+  loss (scalar) : Scalar loss tensor.
+  clipping (int) : Threshold to use for clipping.
+  quant_weights (list) : list of tf.Tensors (quantized weights)
+  original_weights (list) : list of tf.Variables (original weights)
   
   Returns:
   The train op.
-  List of gradient, variable tuples, where gradients have been clipped.
-  Global norm before clipping.
+  List of gradient of original weights
+  List of gradient of quantized weights
+  Global norm before clipping for original weights
+  Global norm before clipping for quantized weights
+  
   """
   
   quantized_grads = tf.gradients(loss, quantized_weights,name = 'quant_grads')

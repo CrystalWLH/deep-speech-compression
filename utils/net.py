@@ -39,7 +39,7 @@ def gated_conv(inputs,filters, kernel_size, strides, activation,padding, data_fo
   return conv
   
   
-def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts, activation, data_format,batchnorm,train):
+def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts, activation,vocab_size, data_format,batchnorm,train):
   """
   Apply sequence of 1D convolution operation.
   
@@ -53,6 +53,7 @@ def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts
     data_format (str) : Either `channels_first` (batch, channels, max_length) or `channels_last` (batch, max_length, channels) 
     batchnorm (bool) : use batch normalization
     train (bool) : wheter in train mode or not
+    vocab_size (int) : number of classes in logits
     
   :return:
     pre_out (tf.Tensor) : result of sequence of convolutions
@@ -84,7 +85,11 @@ def convolutional_sequence(conv_type, inputs, filters, widths, strides, dropouts
       
       tf.summary.histogram(layer_name, prev_layer)
       
-  return prev_layer
+  logits = tf.layers.conv1d(inputs = prev_layer, filters = vocab_size, kernel_size = 1,
+                            strides= 1, activation=None,padding="same", 
+                            data_format= data_format,name="logits")
+      
+  return logits
 
 def clip_and_step(optimizer, loss, clipping):
   """
