@@ -183,7 +183,7 @@ if __name__ == '__main__':
                                 input_channels = env_params.get('input_channels'),
                                 mode = args.mode,
                                 epochs = env_params.get('epochs'),
-                                batch_size = env_params.get('batch_size') if args.mode == 'train' else 1
+                                batch_size = env_params.get('batch_size') if args.mode == 'train' else 2
                                 )
       
   elif env_params.get('model_type') == 'student':
@@ -204,7 +204,7 @@ if __name__ == '__main__':
                                 input_channels = env_params.get('input_channels'), 
                                 mode = args.mode,
                                 epochs = env_params.get('epochs'),
-                                batch_size =env_params.get('batch_size') if args.mode == 'train' else 1
+                                batch_size =env_params.get('batch_size') if args.mode == 'train' else 2
                                 )
   
   estimator = tf.estimator.Estimator(model_fn= model.model_function, params=params,
