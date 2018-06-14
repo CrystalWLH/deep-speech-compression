@@ -32,7 +32,7 @@ def save_chars2id_to_file(chars2id, path, file_name):
     
     with open(str(path), 'w') as out_file:
       for (key,value) in sorted_items:
-        out_file.write("{}\t{}\n".format(key,value))
+        out_file.write("{}\t{}\n".format(value,key))
   else:
     
     raise ValueError("File already existing! Not overwriting...")
@@ -57,7 +57,7 @@ def load_chars2id_from_file(file_name):
     with open(str(path)) as infile:
       for line in infile:
         key,value = line.strip('\n').split('\t')
-        chars2ids[int(key)] = value
+        chars2ids[value] = int(key)
     
     return chars2ids
   
