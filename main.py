@@ -48,7 +48,7 @@ def get_data_path(env_params,mode):
   elif mode == 'eval':
     data = env_params.get('eval_data')
   elif mode == 'predict':
-    data = env_params.get('predict_data')
+    data = env_params.get('test_data')
     
   return data
 
@@ -215,7 +215,7 @@ if __name__ == '__main__':
                                 input_channels = env_params.get('input_channels'), 
                                 mode = args.mode,
                                 epochs = env_params.get('epochs'),
-                                batch_size =env_params.get('batch_size') if args.mode == 'train' else 2
+                                batch_size =env_params.get('batch_size') if args.mode == 'train' else 1
                                 )
   
   estimator = tf.estimator.Estimator(model_fn= model.model_function, params=params,

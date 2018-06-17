@@ -183,6 +183,8 @@ class AbstractW2L(object,metaclass=ABCMeta):
       decoded_string = table.lookup(dense_decoded)
       
       decoded_string = tf.reduce_join(decoded_string, separator = '', axis = 1)
+      
+#      decoded_string = tf.regex_replace(decoded_string,pattern = 'VVV*',rewrite = '')
   
       pred = {'decoding' : decoded_string, 'logits' : logits}
       
