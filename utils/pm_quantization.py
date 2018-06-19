@@ -7,10 +7,13 @@ Created on Tue Jun 19 11:59:02 2018
 """
 
 import os
+import logging
 import argparse
 import tensorflow as tf
 from utils.quantization import quantize_uniform
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
 
 def parse_args():
   """
@@ -47,26 +50,25 @@ if __name__ == "__main__":
   
   with tf.Session() as sess:
 
-    print('Load checkpoint of original model')
+    logger.info('Load checkpoint of original model')
     saver = tf.train.import_meta_graph(orig_model + '.meta')
-    print('Restore variables')
+    logger.info('Restore variables')
     saver.restore(sess, orig_model)
     
     pm_saver = tf.train.Saver()
     
     # get your variable
     variables = tf.trainable_variables()
-    print("Variables to quantize : {}".format(len(variables)))
+    logger.info("Variables to quantize : {}".format(len(variables)))
     
     for idx,var in enumerate(variables):
 
       var_up = var.assign(quantize_uniform(var,s,bkt_size,stoch))
       
-      print("Quantized var : {}".format(var))
       
       sess.run(var_up)
           
     pm_saver.save(sess, os.path.join(pm,name))
-    print("Successfully created checkpoint with quantized variables")
+    logger.info("Successfully created checkpoint with quantized variables")
     
     

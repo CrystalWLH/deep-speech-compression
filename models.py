@@ -255,7 +255,8 @@ class AbstractW2L(object,metaclass=ABCMeta):
       
       sparse_decoded,_ = tf.nn.ctc_beam_search_decoder(logits,seqs_len,
                                                      beam_width=beam_width,
-                                                     top_paths=top_paths)
+                                                     top_paths=top_paths,
+                                                     merge_repeated=False)
       
     elif lm:
       
@@ -275,7 +276,7 @@ class AbstractW2L(object,metaclass=ABCMeta):
             lm_weight = lm_weight,
             word_count_weight = word_count_weight,
             valid_word_count_weight = valid_word_count_weight,
-            merge_repeated=True)
+            merge_repeated=False)
         
         sparse_decoded = [tf.SparseTensor(ix, val, shape) for (ix, val, shape) in zip(decoded_ixs, decoded_vals, decoded_shapes)]
       

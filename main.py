@@ -194,7 +194,7 @@ if __name__ == '__main__':
                                 input_channels = env_params.get('input_channels'),
                                 mode = args.mode,
                                 epochs = env_params.get('epochs'),
-                                batch_size = env_params.get('batch_size') if args.mode == 'train' else 2
+                                batch_size = env_params.get('batch_size') if args.mode == 'train' else 1
                                 )
       
   elif env_params.get('model_type') == 'student':
@@ -233,7 +233,7 @@ if __name__ == '__main__':
   elif args.mode == 'predict':
     
     for idx,batch_pred in enumerate(estimator.predict(input_fn=input_fn, yield_single_examples = False)):
-      if idx == 0:
+      if idx <= 5:
         for p in batch_pred['decoding']: 
           print(p)
       else:

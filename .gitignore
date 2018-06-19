@@ -10,7 +10,6 @@ __pycache__/
 # external resources
 data/
 models/
-kenlm/kenlm_data/alphabet.txt
 kenlm/kenlm_data/lm.binary
 kenlm/kenlm_data/trie
 
