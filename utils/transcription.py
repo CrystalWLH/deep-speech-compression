@@ -13,8 +13,9 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
 
+CHARS = " abcdefghijklmnopqrstuvwxyz'"
 
-def save_chars2id_to_file(chars2id, path, file_name):
+def chars2ids_to_file(chars2id, path, file_name):
   """
   Save chars -> ids lookup table to file in <value>\t<character>\n format.
   
@@ -38,7 +39,7 @@ def save_chars2id_to_file(chars2id, path, file_name):
     raise ValueError("File already existing! Not overwriting...")
         
         
-def load_chars2id_from_file(file_name):
+def chars2ids_from_file(file_name):
   """
   Load into dictionary char encoding saved into file
   
@@ -82,31 +83,21 @@ def sent_char_to_ids(sent,mapping):
   return [mapping.get(c) for c in sent]
 
 
-def get_ctc_char2ids(chars_set):
+def get_ctc_char2ids():
   """
-  Transform character lookup for CTC loss. 
-  Blank char must be the last (highest lookup ID). See https://www.tensorflow.org/api_docs/python/tf/nn/ctc_loss 
-  Enumeration starts from `1`. Id `0` kept for padding. 
+  Create character lookup for CTC loss. 
+  Blank char must be the last (highest lookup ID). See https://www.tensorflow.org/api_docs/python/tf/nn/ctc_loss  
   
-  :param:
-    char_set (set) : set of characters
   :return:
     char2id (dict) : character lookup
   """
   
-  char2id = {}
-  char2id[' '] = 0
+  chars2ids = {c : idx for idx,c in enumerate(CHARS)}
   
-  chars_set.remove(' ')
   
-  for idx,char in enumerate(chars_set):
-    char2id[char] = idx
-  
-  char2id['blank'] = len(char2id)
-  
-  logger.info("Modified characters id lookup for compatibility with CTC loss")
-  
-  return char2id
+  return chars2ids
+
+
 
 def get_id2encoded_transcriptions(ids2trans,mapping):
   """
@@ -127,7 +118,7 @@ def get_id2encoded_transcriptions(ids2trans,mapping):
   return ids2encoded_trans
   
 
-def create_vocab_id2transcript(dir_path):
+def create_id2transcript(dir_path):
   """
   Traverse LibriSpeech corpus and create:
     - lookup table for transcriptions 
@@ -139,9 +130,7 @@ def create_vocab_id2transcript(dir_path):
     char_set (set) : character set
     ids2transcriptions (dict) :  dictionary of transcription ids (keys) and the actual transcription (values) in list of chars format
   """
-  
-  chars_set = set()
-  
+    
   ids2transcriptions = {}
   
   main_path = Path(dir_path)
@@ -166,19 +155,15 @@ def create_vocab_id2transcript(dir_path):
     
     with trans_file.open() as tr_file:
       for line in tr_file:
-        split_line = line.strip().split()
+        split_line = line.strip().lower().split()
         
         ref,sent_chars = split_line[0], list(' '.join(split_line[1:]))
         
         ids2transcriptions[ref] = sent_chars
         
-        chars_set.update(sent_chars)
         
-        
-        
-  logger.info("Created character set of size {}".format(len(chars_set)))
   logger.info("Created transcriptions lookup")
   
-  return chars_set, ids2transcriptions
+  return ids2transcriptions
 
 

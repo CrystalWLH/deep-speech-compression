@@ -22,7 +22,7 @@ import json
 import tensorflow as tf
 from input_funcs import teacher_input_func, student_input_func  
 from models import TeacherModel,StudentModel,QuantStudentModel
-from utils.transcription import load_chars2id_from_file
+from utils.transcription import get_ctc_char2ids
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
@@ -113,7 +113,10 @@ def config2params(config):
   env_params['train_data'] = configuration['FILES'].get('train_data',os.path.join('tfrecords_data','tfrecords_mfccs.train'))
   env_params['eval_data'] = configuration['FILES'].get('eval_data',os.path.join('tfrecords_data','tfrecords_mfccs.dev-clean'))
   env_params['test_data'] = configuration['FILES'].get('test_data',os.path.join('tfrecords_data','tfrecords_mfccs.test-clean'))
-  env_params['vocab_size'] =  len(load_chars2id_from_file(configuration['FILES'].get('vocab_path',os.path.join('tfrecords_data','ctc_vocab.txt'))))
+  
+  # +1 for CTC blank label
+  env_params['vocab_size'] =  len(get_ctc_char2ids()) + 1 
+  
   env_params['knlem_op'] = configuration['LM'].get('knlem_op',os.path.join('lm_op','libctc_decoder_with_kenlm.so'))
   
   
@@ -194,7 +197,7 @@ if __name__ == '__main__':
                                 input_channels = env_params.get('input_channels'),
                                 mode = args.mode,
                                 epochs = env_params.get('epochs'),
-                                batch_size = env_params.get('batch_size') if args.mode == 'train' else 1
+                                batch_size = env_params.get('batch_size') if args.mode == 'train' else 3
                                 )
       
   elif env_params.get('model_type') == 'student':
@@ -233,7 +236,7 @@ if __name__ == '__main__':
   elif args.mode == 'predict':
     
     for idx,batch_pred in enumerate(estimator.predict(input_fn=input_fn, yield_single_examples = False)):
-      if idx <= 5:
+      if idx == 0:
         for p in batch_pred['decoding']: 
           print(p)
       else:

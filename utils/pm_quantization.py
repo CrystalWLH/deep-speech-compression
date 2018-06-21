@@ -19,7 +19,7 @@ def parse_args():
   """
   Parse arguments for script.
   """
-  parser = argparse.ArgumentParser(description='Create checkpoint for Post Mortem Quantized Model')
+  parser = argparse.ArgumentParser(description='Create checkpoint for Post Mortem Quantized model')
   parser.add_argument('--orig', required=True, type = str, help='Path to model checkpoint to be quantized')
   parser.add_argument('--pm', required = True, type = str, help='Where to store quantized model ')
   parser.add_argument('--name', default = 'quant', type = str, help='Name for checkpoint')

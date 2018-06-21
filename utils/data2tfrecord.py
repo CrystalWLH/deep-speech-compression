@@ -11,7 +11,7 @@ import logging
 import tensorflow as tf
 from pathlib import Path
 import pickle
-from utils.transcription import create_vocab_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,save_chars2id_to_file,load_chars2id_from_file
+from utils.transcription import create_id2transcript,get_ctc_char2ids,get_id2encoded_transcriptions,chars2ids_to_file
 from utils.audio import partial_get_audio_func,get_audio_id
 import multiprocessing as mp
 import time
@@ -32,7 +32,6 @@ def parse_args():
   parser = argparse.ArgumentParser(description='Create tfrecord files from LibriSpeech corpus')
   parser.add_argument('-d', '--data', required=True, type = str, help='Path to unzipped LibriSpeech dataset')
   parser.add_argument('--cached-ids2trans', type = str,default = None, help='Path to audio_id-transcription lookup. Do not call this argument if you wish to create this lookup')
-  parser.add_argument('--cached-chars2ids', type = str,default = None, help='Path to ids-chars lookup. Do not call this argument if you wish to create this lookup')
   parser.add_argument('--cores', type = int,default = 2, help='Number of cores to use. Default : 2')
   parser.add_argument('--chunck-size', type = int,default = 100, help='How many audio examples to send to worker to be processed. Default : 100')
   parser.add_argument('-s', '--splits', required=True, type = str,
@@ -289,37 +288,37 @@ if __name__ == "__main__":
     
   create_tfrecords_folder(args.out)
   
-  if not args.cached_ids2trans:
+  if args.loss == 'ctc':
   
-    chars_set, ids2trans = create_vocab_id2transcript(args.data)
+    if not args.cached_ids2trans:
+  
+      ids2trans = create_id2transcript(args.data)
         
-    save_pickle(ids2trans, args.out, 'ids2transc.pkl')
+      save_pickle(ids2trans, args.out, 'ids2transc.pkl')
       
-    if args.loss == 'ctc':
-      
-      chars2ids = get_ctc_char2ids(chars_set)
+      chars2ids = get_ctc_char2ids()
             
-      save_chars2id_to_file(chars2ids, args.out, 'ctc_vocab.txt')
+      chars2ids_to_file(chars2ids, args.out, 'ctc_vocab.txt')
+    
+    else:
+    
+      logger.info("Loading cached id-transcriptions lookup")
       
-    elif args.loss == 'asg':
+      ids2trans = load_pickle(args.cached_ids2trans)
       
-      raise NotImplementedError("Sorry! ASG loss is not available!")
+      chars2ids = get_ctc_char2ids()
     
-  else:
-    
-    logger.info("Loading cached id-transcriptions lookup")
-    
-    ids2trans = load_pickle(args.cached_ids2trans)
-    
-    logger.info("Loading cached id-chars lookup")
-    
-    chars2ids = load_chars2id_from_file(args.cached_chars2ids)
+       
+  elif args.loss == 'asg':
       
+    raise NotImplementedError("Sorry! ASG loss is not available!")
+    
+    
   encoded_transcriptions = get_id2encoded_transcriptions(ids2trans, chars2ids)
   
   for split in args.splits.split(','):
     
-    logger.info("\n\nProcessing files in `{}`\n\n".format(split))
+    logger.info("\n\nProcessing files in `{}`\n".format(split))
   
     write_tfrecords_by_split(data_path = args.data,
                              out_path = args.out,
@@ -334,52 +333,4 @@ if __name__ == "__main__":
                              cores = args.cores)
   
   
-  
-  
-  
-  
-  
-          
-          
-          
-          
-          
-          
-        
-        
-          
-          
-          
-          
-        
-        
-      
-      
-      
-      
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-      
-      
-      
-      
-      
-  
-  
-  
-  
-
-
-
-
-
-  
-  
+ 
