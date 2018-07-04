@@ -540,7 +540,182 @@ class StudentModel(AbstractW2L):
       
     return self.evaluate(mode,table,dense_decoded,labels,ctc_loss,scaffold)
     
+
+
+class FitNet(StudentModel):
+  
+  def fitnet_loss(self,guided,hint,data_format,activation):
+    """
+    Compute weighted squared error between the guided layer and the hint layer. 
+    If the dimensions of the guided layer and the hint layer do not match, a convolutional regressor is applied to overcome this issue.
     
+    :math:`Loss_{fitent} = \\frac{1}{2}|| guided - r(hint * W^{i})||^{2}`
+    
+    otherwise the loss is computed directly.
+    
+    :params:
+      
+      guided (tf.Tensor) : the guided layer. Activated output of n-th convolution in Student model
+      hint (tf.Tensor) : the guiding layer. Activated output of n-th convolution in Teacher model
+      data_format (str) : data format specification
+      activation (tf function) : activation function if convolutional regressor is applied
+      
+    :return:
+      
+      loss (scalar) : fitnet loss
+    """
+  
+    channels_axis = 1 if data_format == "channels_first" else -1
+    
+    guided_channels = guided.get_shape().as_list()[channels_axis]
+    hint_channels = hint.get_shape().as_list()[channels_axis]
+    
+    if guided_channels != hint_channels:
+      
+      with tf.variable_scope("fitnet_regressor"):
+      
+        guided = tf.layers.conv1d(inputs = guided,
+                                    filters=hint_channels,
+                                    kernel_size= 1,
+                                    strides = 1,
+                                    activation = activation,
+                                    padding = 'same',
+                                    use_bias=False,
+                                    data_format = data_format,
+                                    name = 'conv' )
+        
+    
+    guided_fl = tf.reshape(guided,[tf.shape(hint)[0],-1])
+    hint_fl = tf.reshape(guided,[tf.shape(hint)[0],-1])
+    
+    tf.assert_equal(tf.shape(guided_fl),tf.shape(hint_fl))
+    
+    with tf.name_scope("fitnet_loss"):
+    
+      loss = tf.reduce_sum(0.5*(guided_fl-hint_fl)**2, axis = -1)
+      
+      loss = tf.reduce_mean(loss)
+    
+    return loss
+  
+  
+  def get_guided_layer(self,features,mode,conv_type,filters,widths,strides,activation,data_format,dropouts,bn,up_to):
+    
+    guided = convolutional_sequence(inputs = features,
+                              conv_type =conv_type,
+                              filters = filters[:up_to],
+                              widths = widths[:up_to],
+                              strides = strides[:up_to],
+                              activation = activation,
+                              data_format = data_format,
+                              dropouts =dropouts[:up_to],
+                              batchnorm = bn,
+                              train = mode)
+    
+    return guided
+    
+    
+    
+  
+  def model_function(self,features,labels,mode,params):
+    """
+    Model function for training,evaluating and predicting from `features` with Teacher-Student training.
+    
+    :params:
+      features (tf.Tensor) : input batch
+      labels (tf.Tensor) : labels batch
+      mode (str) : mode
+      params (dict) : all parameters of model
+      
+    """
+
+    
+    audio_features = self.get_by_data_format(features['audio'],data_format = params.get('data_format'))
+    
+    if params.get('stage') == 1:
+      
+      hint = self.get_by_data_format(features['hint'],data_format = params.get('data_format')) 
+      
+      guided = self.get_guided_layer(audio_features,mode,
+                             conv_type = params.get('conv_type'), 
+                             filters = params.get('filters'),
+                             widths = params.get('widths'),
+                             strides = params.get('strides'),
+                             activation = params.get('activation'),
+                             data_format = params.get('data_format'),
+                             dropouts = params.get('dropouts'),
+                             bn = params.get('bn'),
+                             up_to = params.get('guided')
+                             )
+      
+      loss = self.fitnet_loss(guided,hint,
+                              data_format = params.get('data_format'),
+                              activation = params.get('activation'))
+      
+      
+
+    
+    elif params.get('stage') == 2:
+    
+      teacher_logits = self.time_major_logits(features['logits'],data_format = 'channels_last')
+    
+      logits = self.get_logits(audio_features,mode,
+                             conv_type = params.get('conv_type'), 
+                             filters = params.get('filters'),
+                             widths = params.get('widths'),
+                             strides = params.get('strides'),
+                             activation = params.get('activation'),
+                             data_format = params.get('data_format'),
+                             dropouts = params.get('dropouts'),
+                             bn = params.get('bn'),
+                             vocab_size = params.get('vocab_size'))
+    
+      logits = self.time_major_logits(logits,data_format = params.get('data_format'))
+    
+      seqs_len = self.get_seqs_length(logits) 
+    
+      
+      ctc_loss = self.ctc_loss(logits,labels,seqs_len)
+    
+      distillation_loss = self.distillation_loss(logits,teacher_logits,temperature = params.get('temperature'))
+    
+      loss = self.total_loss(ctc_loss, distillation_loss, alpha = params.get('alpha'), temperature = params.get('temperature'))
+    
+    if mode == tf.estimator.ModeKeys.TRAIN:
+      
+      return self.train(mode,
+                        lr = params.get('adam_lr'),
+                        eps = params.get('adam_eps'),
+                        clipping = params.get('clipping'),
+                        bn = params.get('bn'),
+                        loss = loss)
+      
+      
+    if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL:
+      
+      sparse_decoded = self.decode(logits,seqs_len,
+                                   lm = params.get('lm'), 
+                                   beam_search= params.get('beam_search'),
+                                   beam_width= params.get('beam_width'),
+                                   top_paths= params.get('top_paths'),
+                                   lm_binary= params.get('lm_binary'),
+                                   lm_trie= params.get('lm_trie'),
+                                   lm_alphabet= params.get('lm_alphabet'),
+                                   lm_weight= params.get('lm_weight'),
+                                   word_count_weight= params.get('word_count_weight'),
+                                   valid_word_count_weight= params.get('valid_word_count_weight') )
+      
+      dense_decoded,table,scaffold = self._decoding_ops(sparse_decoded,lookup_path = params.get('char2idx'))
+      
+    if mode == tf.estimator.ModeKeys.PREDICT:
+      
+      return self.predict(mode,table,scaffold,logits,dense_decoded)
+
+    
+    assert mode == tf.estimator.ModeKeys.EVAL
+      
+    return self.evaluate(mode,table,dense_decoded,labels,ctc_loss,scaffold)
+      
       
     
 class QuantStudentModel(StudentModel):
@@ -704,4 +879,5 @@ class QuantStudentModel(StudentModel):
       
       return self.evaluate(mode,table,dense_decoded,labels,ctc_loss,scaffold)
   
-  
+
+

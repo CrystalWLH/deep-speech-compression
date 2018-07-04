@@ -21,7 +21,7 @@ from configparser import ConfigParser
 import json
 import tensorflow as tf
 from input_funcs import teacher_input_func, student_input_func  
-from models import TeacherModel,StudentModel,QuantStudentModel
+from models import TeacherModel,StudentModel,QuantStudentModel,FitNet
 from utils.transcription import load_chars2id_from_file
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ def config2params(config):
   env_params['test_data'] = configuration['FILES'].get('test_data',os.path.join('tfrecords_data','tfrecords_mfccs.test-clean'))
   env_params['vocab_size'] =  len(load_chars2id_from_file(configuration['FILES'].get('vocab_path',os.path.join('tfrecords_data','ctc_vocab.txt'))))
   env_params['knlem_op'] = configuration['LM'].get('knlem_op',os.path.join('lm_op','libctc_decoder_with_kenlm.so'))
-  
+  env_params['fitnet'] = configuration['GENERAL'].getboolean('fitnet',False)
   
   if not env_params['input_channels']:
     raise ValueError("Number of input channels is not specified! Please provide!")
@@ -148,6 +148,14 @@ def config2params(config):
       params['bucket_size'] = configuration['QUANTIZATION'].getint('bucket_size', 256)
       params['stochastic'] = configuration['QUANTIZATION'].getboolean('stochastic', False)
       params['quant_last_layer'] = configuration['QUANTIZATION'].getboolean('quant_last_layer', False)
+      
+      
+    if env_params.get('fitnet'):
+      env_params['teacher_hints'] = configuration['FILES'].get('teacher_hints')
+      env_params['stage'] = configuration['TRAIN'].getint('stage', 1)
+      params['stage'] = env_params['stage']
+      params['guided'] = configuration['TRAIN'].getint('guided', 5)
+      
   
   # ARCHITECTURE      
   params['filters'] = json.loads(configuration[model_type].get('filters', [250,250]))
@@ -199,18 +207,27 @@ if __name__ == '__main__':
       
   elif env_params.get('model_type') == 'student':
     
-    if not env_params.get('quantize'):
-      
-      model = StudentModel(custom_op = env_params.get('knlem_op'))
+    guidance = env_params.get('teacher_logits')
     
-    else:
+    if env_params.get('quantize'):
       
-      model = QuantStudentModel(custom_op = env_params.get('knlem_op')) 
+      model = QuantStudentModel(custom_op = env_params.get('knlem_op'))
+      
+    elif env_params.get('fitnet'):
+      
+      model = FitNet(custom_op = env_params.get('knlem_op'))
+      
+      # USE LOGITS OR MIDDLE REPRESENTATION ACCORDING TO TRAINING STAGE
+      guidance = guidance if env_params.get('stage') == 2 else env_params.get('teacher_hints')
+      
+    else:
+            
+      model = StudentModel(custom_op = env_params.get('knlem_op'))
       
   
     def input_fn():
       return student_input_func(tfrecord_path = get_data_path(env_params,args.mode),
-                                tfrecord_logits = env_params.get('teacher_logits'),
+                                tfrecord_logits = guidance,
                                 vocab_size = env_params.get('vocab_size'),
                                 input_channels = env_params.get('input_channels'), 
                                 mode = args.mode,

@@ -99,7 +99,9 @@ def get_ctc_char2ids(chars_set):
   
   chars_set.remove(' ')
   
-  for idx,char in enumerate(chars_set):
+  chars_set = sorted(chars_set)
+  
+  for idx,char in enumerate(chars_set, start = 1):
     char2id[char] = idx
   
   char2id['blank'] = len(char2id)
