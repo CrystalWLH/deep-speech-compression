@@ -113,7 +113,7 @@ def load_pow_spec(audio_path, sample_rate, n_fft=512, hop_length=160):
     fft_window (int) : window for FFT
     hop_length (int) : number audio of frames between FFT columns
   :return:
-    spectrogram (np.ndarray) : Power spectrogram
+    spectrogram (np.ndarray) : Power spectrogram [coefficients, time ]
     
   """
   

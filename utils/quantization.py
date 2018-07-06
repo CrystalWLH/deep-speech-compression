@@ -187,7 +187,7 @@ def quantize_uniform(tensor,s,bucket_size,stochastic):
 
 def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
                         dropouts, activation, data_format,batchnorm,train,
-                        num_bits,bucket_size,stochastic,vocab_size,quant_last_layer):
+                        num_bits,bucket_size,stochastic,vocab_size):
   """
   Apply sequence of 1D convolution operation.
   
@@ -269,25 +269,30 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
       
       tf.summary.histogram(layer_name, prev_layer)
       
-    
+#TODO
+# ADD BIAS, RM OPTION FOR QUANT_LAST
+  
   with tf.variable_scope('logits',reuse=tf.AUTO_REUSE):
     
     in_channels = prev_layer.get_shape().as_list()[channels_axis]
     
     W_logits = tf.get_variable('logits', [1,in_channels,vocab_size])
-    
     original_weights.append(W_logits)
     
-    quantized_weights.append(W_logits)
+    W_quant = quantize_uniform(tensor = W, s = s, bucket_size = bucket_size, stochastic = stochastic)
+    quantized_weights.append(W_quant)
     
-    if quant_last_layer:
+    bias = tf.get_variable('bias', [vocab_size])
+    original_weights.append(bias)
     
-      W_logits = quantize_uniform(tensor = W, s = s, bucket_size = bucket_size, stochastic = stochastic)
+    quant_bias = quantize_uniform(tensor = bias, s = s, bucket_size = bucket_size, stochastic = stochastic)
+    quantized_weights.append(quant_bias)
     
-      quantized_weights[-1] = W_logits
     
-    logits = conv_op(value = prev_layer,filters = W_logits, stride = 1, padding = 'SAME',
+    logits = conv_op(value = prev_layer,filters = W_quant, stride = 1, padding = 'SAME',
                         data_format= map_data_format.get(data_format), name = 'logits')
+    
+    logits = tf.nn.bias_add(logits, quant_bias, bias_map.get(data_format))
       
   return logits,quantized_weights,original_weights  
 

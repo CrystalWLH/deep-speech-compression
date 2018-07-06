@@ -147,12 +147,12 @@ def config2params(config):
       params['num_bits'] = configuration['QUANTIZATION'].getint('num_bits', 4)
       params['bucket_size'] = configuration['QUANTIZATION'].getint('bucket_size', 256)
       params['stochastic'] = configuration['QUANTIZATION'].getboolean('stochastic', False)
-      params['quant_last_layer'] = configuration['QUANTIZATION'].getboolean('quant_last_layer', False)
       
-      
+    # PARAMETERS SPECIFIC TO FITNETS 
     if env_params.get('fitnet'):
       env_params['teacher_hints'] = configuration['FILES'].get('teacher_hints')
       env_params['stage'] = configuration['TRAIN'].getint('stage', 1)
+      env_params['hint_size'] = configuration['TRAIN'].getint('hint_size', 250)
       params['stage'] = env_params['stage']
       params['guided'] = configuration['TRAIN'].getint('guided', 5)
       
@@ -209,6 +209,8 @@ if __name__ == '__main__':
     
     guidance = env_params.get('teacher_logits')
     
+    guide_size = env_params.get('vocab_size')
+        
     if env_params.get('quantize'):
       
       model = QuantStudentModel(custom_op = env_params.get('knlem_op'))
@@ -217,9 +219,15 @@ if __name__ == '__main__':
       
       model = FitNet(custom_op = env_params.get('knlem_op'))
       
-      # USE LOGITS OR MIDDLE REPRESENTATION ACCORDING TO TRAINING STAGE
-      guidance = guidance if env_params.get('stage') == 2 else env_params.get('teacher_hints')
+      # USE LOGITS OR HIDDEN REPRESENTATION ACCORDING TO TRAINING STAGE
+      if env_params.get('stage') == 1:
+        
+        logger.info("Training FitNet stage : 1")
       
+        guidance =  env_params.get('teacher_hints')
+        
+        guide_size = env_params.get('hint_size')
+            
     else:
             
       model = StudentModel(custom_op = env_params.get('knlem_op'))
@@ -227,8 +235,8 @@ if __name__ == '__main__':
   
     def input_fn():
       return student_input_func(tfrecord_path = get_data_path(env_params,args.mode),
-                                tfrecord_logits = guidance,
-                                vocab_size = env_params.get('vocab_size'),
+                                tfrecord_guide = guidance,
+                                guide_size = guide_size,
                                 input_channels = env_params.get('input_channels'), 
                                 mode = args.mode,
                                 epochs = env_params.get('epochs'),

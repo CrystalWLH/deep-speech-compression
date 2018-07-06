@@ -1,4 +1,6 @@
 # Listen! The Teacher is talking! 
+
+
 ## Create input data
 Create data with:
     python -m utils.create_tfrecords.py

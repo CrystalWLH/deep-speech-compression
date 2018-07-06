@@ -9,7 +9,7 @@ Created on Tue Jun 12 15:20:27 2018
 
 from abc import ABCMeta,abstractmethod
 import tensorflow as tf
-from utils.net import convolutional_sequence,length,clip_and_step
+from utils.net import _conv_seq,convolutional_sequence,length,clip_and_step
 from utils.quantization import quant_conv_sequence,quant_clip_and_step
 
 
@@ -42,7 +42,7 @@ class AbstractW2L(object,metaclass=ABCMeta):
     
     return length(logits)
     
-  def get_by_data_format(self,features,data_format):
+  def get_by_data_format(self,features, data_format):
     """
     Ìnput expected in `channels_first` format. Transpose input if data_format is `channels_last`.
     
@@ -484,7 +484,7 @@ class StudentModel(AbstractW2L):
     
     audio_features = self.get_by_data_format(features['audio'],data_format = params.get('data_format'))
     
-    teacher_logits = self.time_major_logits(features['logits'],data_format = 'channels_last')
+    teacher_logits = self.time_major_logits(features['guide'],data_format = 'channels_last')
     
     logits = self.get_logits(audio_features,mode,
                              conv_type = params.get('conv_type'), 
@@ -544,6 +544,26 @@ class StudentModel(AbstractW2L):
 
 class FitNet(StudentModel):
   
+  def hint_format(self,hint, data_format):
+    """
+    Hint format it's `channels_last` (batch,time,channels). If using `channels_first` hints are transposed.
+    
+    :param:
+      hint (tf.Tensor) : tensor containing hidden representations from Teacher Network
+      data_format (str) : data format specification
+      
+    :return:
+      hint (tf.Tensor) : eventually transposed tensor
+    """
+    
+    with tf.variable_scope('hint_format'):
+      
+      if data_format == 'channels_first':
+        
+        hint = tf.transpose(hint, [0,2,1])
+      
+    return hint
+  
   def fitnet_loss(self,guided,hint,data_format,activation):
     """
     Compute weighted squared error between the guided layer and the hint layer. 
@@ -564,53 +584,61 @@ class FitNet(StudentModel):
       
       loss (scalar) : fitnet loss
     """
-  
-    channels_axis = 1 if data_format == "channels_first" else -1
-    
-    guided_channels = guided.get_shape().as_list()[channels_axis]
-    hint_channels = hint.get_shape().as_list()[channels_axis]
-    
-    if guided_channels != hint_channels:
-      
-      with tf.variable_scope("fitnet_regressor"):
-      
-        guided = tf.layers.conv1d(inputs = guided,
-                                    filters=hint_channels,
-                                    kernel_size= 1,
-                                    strides = 1,
-                                    activation = activation,
-                                    padding = 'same',
-                                    use_bias=False,
-                                    data_format = data_format,
-                                    name = 'conv' )
-        
-    
-    guided_fl = tf.reshape(guided,[tf.shape(hint)[0],-1])
-    hint_fl = tf.reshape(guided,[tf.shape(hint)[0],-1])
-    
-    tf.assert_equal(tf.shape(guided_fl),tf.shape(hint_fl))
     
     with tf.name_scope("fitnet_loss"):
-    
-      loss = tf.reduce_sum(0.5*(guided_fl-hint_fl)**2, axis = -1)
       
-      loss = tf.reduce_mean(loss)
+      channels_axis = 1 if data_format == "channels_first" else -1
+      
+      guided_channels = guided.get_shape().as_list()[channels_axis]
+      hint_channels = hint.get_shape().as_list()[channels_axis]
+      
+      if guided_channels != hint_channels:
+        
+        print("Dimensions are not the same. Using Conv Regressor")
+        
+        with tf.variable_scope("fitnet_regressor"):
+        
+          guided = tf.layers.conv1d(inputs = guided,
+                                      filters=hint_channels,
+                                      kernel_size= 1,
+                                      strides = 1,
+                                      activation = activation,
+                                      padding = 'same',
+                                      use_bias=False,
+                                      data_format = data_format,
+                                      name = 'conv' )
+          
+      else:
+        print("Equal dimensions, no need for regressor")
+          
+      
+      guided_fl = tf.reshape(guided,[tf.shape(hint)[0],-1])
+      hint_fl = tf.reshape(hint,[tf.shape(hint)[0],-1])
+      
+      tf.assert_equal(tf.shape(guided_fl),tf.shape(hint_fl))
+      
+      loss = tf.losses.mean_squared_error(hint_fl,guided_fl)
+      
+      tf.summary.scalar('fitnet_loss',loss)
     
     return loss
   
   
   def get_guided_layer(self,features,mode,conv_type,filters,widths,strides,activation,data_format,dropouts,bn,up_to):
     
-    guided = convolutional_sequence(inputs = features,
-                              conv_type =conv_type,
-                              filters = filters[:up_to],
-                              widths = widths[:up_to],
-                              strides = strides[:up_to],
-                              activation = activation,
-                              data_format = data_format,
-                              dropouts =dropouts[:up_to],
-                              batchnorm = bn,
-                              train = mode)
+    with tf.variable_scope('model'):
+    
+      guided = _conv_seq(inputs = features,
+                         conv_type =conv_type,
+                         filters = filters[:up_to],
+                         widths = widths[:up_to],
+                         strides = strides[:up_to],
+                         activation = activation,
+                         data_format = data_format,
+                         dropouts =dropouts[:up_to],
+                         batchnorm = bn,
+                         train = mode,
+                         hist = True)
     
     return guided
     
@@ -632,21 +660,23 @@ class FitNet(StudentModel):
     
     audio_features = self.get_by_data_format(features['audio'],data_format = params.get('data_format'))
     
+    
     if params.get('stage') == 1:
       
-      hint = self.get_by_data_format(features['hint'],data_format = params.get('data_format')) 
+      hint = self.hint_format(features['guide'], data_format = params.get('data_format'))
+      
       
       guided = self.get_guided_layer(audio_features,mode,
-                             conv_type = params.get('conv_type'), 
-                             filters = params.get('filters'),
-                             widths = params.get('widths'),
-                             strides = params.get('strides'),
-                             activation = params.get('activation'),
-                             data_format = params.get('data_format'),
-                             dropouts = params.get('dropouts'),
-                             bn = params.get('bn'),
-                             up_to = params.get('guided')
-                             )
+                               conv_type = params.get('conv_type'), 
+                               filters = params.get('filters'),
+                               widths = params.get('widths'),
+                               strides = params.get('strides'),
+                               activation = params.get('activation'),
+                               data_format = params.get('data_format'),
+                               dropouts = params.get('dropouts'),
+                               bn = params.get('bn'),
+                               up_to = params.get('guided')
+                               )
       
       loss = self.fitnet_loss(guided,hint,
                               data_format = params.get('data_format'),
@@ -656,8 +686,10 @@ class FitNet(StudentModel):
 
     
     elif params.get('stage') == 2:
+      
+      print("I'm in stage 2 : train with DL")
     
-      teacher_logits = self.time_major_logits(features['logits'],data_format = 'channels_last')
+      teacher_logits = self.time_major_logits(features['guide'],data_format = 'channels_last')
     
       logits = self.get_logits(audio_features,mode,
                              conv_type = params.get('conv_type'), 
@@ -721,7 +753,7 @@ class FitNet(StudentModel):
 class QuantStudentModel(StudentModel):
  
   def get_logits(self,features,mode,conv_type,filters,widths,strides,activation,data_format,dropouts,batchnorm,vocab_size,
-                 num_bits,bucket_size,stochastic,quant_last_layer):
+                 num_bits,bucket_size,stochastic):
     """
     Model core. Computes logits via a QUANTIZED convolutional sequence.
     
@@ -750,7 +782,7 @@ class QuantStudentModel(StudentModel):
                               num_bits = num_bits,
                               bucket_size = bucket_size,
                               stochastic = stochastic,
-                              quant_last_layer = quant_last_layer)
+                              )
     
     return logits,quant_weights,original_weights
     
@@ -816,7 +848,7 @@ class QuantStudentModel(StudentModel):
     
     audio_features = self.get_by_data_format(features['audio'],data_format = params.get('data_format'))
     
-    teacher_logits = self.time_major_logits(features['logits'],data_format = 'channels_last')
+    teacher_logits = self.time_major_logits(features['guide'],data_format = 'channels_last')
     
     logits,quant_weights,original_weights = self.get_logits(audio_features,mode,
                              conv_type = params.get('conv_type'), 
@@ -830,8 +862,7 @@ class QuantStudentModel(StudentModel):
                              vocab_size = params.get('vocab_size'),
                              num_bits = params.get('num_bits'),
                              bucket_size = params.get('bucket_size'),
-                             stochastic = params.get('stochastic'),
-                             quant_last_layer = params.get('quant_last_layer')
+                             stochastic = params.get('stochastic')
                              )
     
     

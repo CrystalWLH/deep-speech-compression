@@ -60,8 +60,7 @@ if __name__ == "__main__":
     # get your variable
     variables = tf.trainable_variables()
     logger.info("Variables to quantize : {}".format(len(variables)))
-    print(variables)
-    
+    print(variables)    
     for idx,var in enumerate(variables):
       
       var_up = var.assign(quantize_uniform(var,s,bkt_size,stoch))

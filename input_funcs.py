@@ -11,7 +11,7 @@ Created on Sun May  6 15:53:15 2018
 
 import tensorflow as tf
 
-def load_teacher_logits(tfrecord_logits):
+def load_teacher_guide(tfrecord_guide):
   """
   Create dataset containing teacher logits.
   
@@ -22,21 +22,21 @@ def load_teacher_logits(tfrecord_logits):
     dataset_logits (tf.data.Dataset) : dataset containing logits
   """
   
-  dataset_logits = tf.data.TFRecordDataset(tfrecord_logits)
+  dataset_logits = tf.data.TFRecordDataset(tfrecord_guide)
             
-  dataset_logits = dataset_logits.map(parse_tfrecord_logit)
+  dataset_logits = dataset_logits.map(parse_tfrecord_guide)
     
   return dataset_logits
 
 
-def student_input_func(tfrecord_path,tfrecord_logits,vocab_size,input_channels,epochs,mode, batch_size):
+def student_input_func(tfrecord_path,tfrecord_guide,guide_size,input_channels,epochs,mode, batch_size):
   """
   Create input function for student network. Contains audio features and logits of teacher network.
   
   :param:
     tfrecord_path (str) : path to tfrecord file
     tfrecord_logits (str) : path to tfrecord file containing teacher logits
-    vocab_size (int) : size of vocabulary
+    guide_size (int) : size of guidance. Vocab size in case of logits
     input_channels (int) : number of input channels
     epochs (int) : number of epochs before throwing OutOfRange
     mode (str) : part of the dataset. Choiches = (`train`,`dev`,`test`)
@@ -49,15 +49,15 @@ def student_input_func(tfrecord_path,tfrecord_logits,vocab_size,input_channels,e
   
     dataset_std = load_dataset(tfrecord_path)
     
-    dataset_logits = load_teacher_logits(tfrecord_logits)
+    dataset_guide = load_teacher_guide(tfrecord_guide)
     
-    dataset = tf.data.Dataset.zip((dataset_std, dataset_logits))
+    dataset = tf.data.Dataset.zip((dataset_std, dataset_guide))
     
     if mode == 'train':
       
       dataset = dataset.repeat(epochs)
           
-    dataset = dataset.padded_batch(batch_size, padded_shapes= (([input_channels,-1], [-1]), [-1,vocab_size]),
+    dataset = dataset.padded_batch(batch_size, padded_shapes= (([input_channels,-1], [-1]), [-1,guide_size]),
                                                padding_values = ( ( 0. , -1), 0. ))
     
     dataset = dataset.prefetch(batch_size)
@@ -65,7 +65,7 @@ def student_input_func(tfrecord_path,tfrecord_logits,vocab_size,input_channels,e
     (audio,labels), logits = dataset.make_one_shot_iterator().get_next()
     
     
-    features = {'audio' : audio, 'logits' : logits}
+    features = {'audio' : audio, 'guide' : logits}
   
   return features, labels
   
@@ -124,7 +124,7 @@ def parse_tfrecord_example(proto):
   return dense_audio, tf.cast(dense_trans, tf.int32)
 
 
-def parse_tfrecord_logit(proto):
+def parse_tfrecord_guide(proto):
   """
   Parse logits stored in tfrecord file.
   
@@ -135,14 +135,14 @@ def parse_tfrecord_logit(proto):
     
   """
   
-  features = {"logits": tf.VarLenFeature(tf.float32),
+  features = {"guide": tf.VarLenFeature(tf.float32),
               "shape": tf.FixedLenFeature((2,), tf.int64)}
   
   parsed_features = tf.parse_single_example(proto, features)
   
   shape = tf.cast(parsed_features["shape"], tf.int32)
   
-  sparse_logits = parsed_features["logits"]
+  sparse_logits = parsed_features["guide"]
   
   dense_logits = tf.reshape(tf.sparse_to_dense(sparse_logits.indices,
                                               sparse_logits.dense_shape,
