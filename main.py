@@ -153,6 +153,7 @@ def config2params(config):
       env_params['teacher_hints'] = configuration['FILES'].get('teacher_hints')
       env_params['stage'] = configuration['TRAIN'].getint('stage', 1)
       env_params['hint_size'] = configuration['TRAIN'].getint('hint_size', 250)
+      env_params['hinted_model'] = configuration['FILES'].get('hinted_model', './models/fitnet1_stage1')
       params['stage'] = env_params['stage']
       params['guided'] = configuration['TRAIN'].getint('guided', 5)
       
@@ -227,6 +228,12 @@ if __name__ == '__main__':
         guidance =  env_params.get('teacher_hints')
         
         guide_size = env_params.get('hint_size')
+      
+      elif env_params.get('stage') == 2: 
+        
+        warmstart_settings = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=env_params.get('hinted_model'),
+                                                            vars_to_warm_start=".*conv_layer_[0-9].*")
+
             
     else:
             
@@ -245,7 +252,8 @@ if __name__ == '__main__':
   
   estimator = tf.estimator.Estimator(model_fn= model.model_function, params=params,
                                      model_dir= complete_name(env_params,params),
-                                     config=config)
+                                     config=config,
+                                     warm_start_from = warmstart_settings if env_params.get('fitnet') and env_params.get('stage') == 2 else None)
 
   if args.mode == 'train':
   

@@ -609,6 +609,7 @@ class FitNet(StudentModel):
                                       name = 'conv' )
           
       else:
+        
         print("Equal dimensions, no need for regressor")
           
       
@@ -643,7 +644,6 @@ class FitNet(StudentModel):
     return guided
     
     
-    
   
   def model_function(self,features,labels,mode,params):
     """
@@ -662,6 +662,8 @@ class FitNet(StudentModel):
     
     
     if params.get('stage') == 1:
+      
+      print("I'm in stage 1 : train with HintLoss")
       
       hint = self.hint_format(features['guide'], data_format = params.get('data_format'))
       
