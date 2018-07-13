@@ -9,6 +9,7 @@ Created on Fri May  4 15:40:27 2018
 import logging
 import operator
 from pathlib import Path
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format = '%(asctime)s : %(levelname)s : %(module)s: %(message)s', level = 'INFO')
@@ -24,14 +25,12 @@ def save_chars2id_to_file(chars2id, path, file_name):
     file_name (str) : name of file 
   """
   
-  sorted_items = sorted(chars2id.items(), key=operator.itemgetter(1))
-  
   path = Path(path).joinpath(file_name)
   
   if not path.exists():
     
     with open(str(path), 'w') as out_file:
-      for (key,value) in sorted_items:
+      for (key,value) in chars2id.items():
         out_file.write("{}\t{}\n".format(value,key))
   else:
     
@@ -86,7 +85,6 @@ def get_ctc_char2ids(chars_set):
   """
   Transform character lookup for CTC loss. 
   Blank char must be the last (highest lookup ID). See https://www.tensorflow.org/api_docs/python/tf/nn/ctc_loss 
-  Enumeration starts from `1`. Id `0` kept for padding. 
   
   :param:
     char_set (set) : set of characters
@@ -94,18 +92,17 @@ def get_ctc_char2ids(chars_set):
     char2id (dict) : character lookup
   """
   
-  char2id = {}
+  char2id = OrderedDict()
   char2id[' '] = 0
   
   chars_set.remove(' ')
+  chars_set.remove("'")
   
-  chars_set = sorted(chars_set)
-  
-  for idx,char in enumerate(chars_set, start = 1):
+  for idx,char in enumerate(sorted(chars_set), start = 1):
     char2id[char] = idx
   
-  char2id['blank'] = len(char2id)
-  
+  char2id["'"] = len(char2id)
+    
   logger.info("Modified characters id lookup for compatibility with CTC loss")
   
   return char2id
