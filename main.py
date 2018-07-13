@@ -154,8 +154,9 @@ def config2params(config):
       env_params['stage'] = configuration['TRAIN'].getint('stage', 1)
       env_params['hint_size'] = configuration['TRAIN'].getint('hint_size', 250)
       env_params['hinted_model'] = configuration['FILES'].get('hinted_model', './models/fitnet1_stage1')
+      env_params['guided'] = configuration['TRAIN'].getint('guided', 5)
       params['stage'] = env_params['stage']
-      params['guided'] = configuration['TRAIN'].getint('guided', 5)
+      params['guided'] = env_params['guided']
       
   
   # ARCHITECTURE      
@@ -232,7 +233,7 @@ if __name__ == '__main__':
       elif env_params.get('stage') == 2: 
         
         warmstart_settings = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=env_params.get('hinted_model'),
-                                                            vars_to_warm_start=".*conv_layer_[0-9].*")
+                                                            vars_to_warm_start=".*conv_layer_[0-{}].*".format(env_params.get('guided') - 1))
 
             
     else:

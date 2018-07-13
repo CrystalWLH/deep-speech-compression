@@ -133,7 +133,7 @@ if __name__  == "__main__":
           
           logger.info("Guide size is : {}".format(guide_shape[1]))
         
-        if (count%1000) == 0:
+        if (count%10000) == 0:
           logger.info("Successfully wrote {} {} to {}".format(count,guid,out_file))
       
       except tf.errors.OutOfRangeError:
