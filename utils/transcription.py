@@ -7,7 +7,6 @@ Created on Fri May  4 15:40:27 2018
 """
 
 import logging
-import operator
 from pathlib import Path
 from collections import OrderedDict
 

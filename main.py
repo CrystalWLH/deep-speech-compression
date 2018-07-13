@@ -113,7 +113,10 @@ def config2params(config):
   env_params['train_data'] = configuration['FILES'].get('train_data',os.path.join('tfrecords_data','tfrecords_mfccs.train'))
   env_params['eval_data'] = configuration['FILES'].get('eval_data',os.path.join('tfrecords_data','tfrecords_mfccs.dev-clean'))
   env_params['test_data'] = configuration['FILES'].get('test_data',os.path.join('tfrecords_data','tfrecords_mfccs.test-clean'))
-  env_params['vocab_size'] =  len(load_chars2id_from_file(configuration['FILES'].get('vocab_path',os.path.join('tfrecords_data','ctc_vocab.txt'))))
+  env_params['vocabulary'] = load_chars2id_from_file(configuration['FILES'].get('vocab_path',os.path.join('tfrecords_data','ctc_vocab.txt')))
+  
+  env_params['vocab_size'] =  len(env_params.get('vocabulary')) + 1 # CTC BLANK
+  
   env_params['knlem_op'] = configuration['LM'].get('knlem_op',os.path.join('lm_op','libctc_decoder_with_kenlm.so'))
   env_params['fitnet'] = configuration['GENERAL'].getboolean('fitnet',False)
   
