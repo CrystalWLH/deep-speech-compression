@@ -44,9 +44,9 @@ Once the all the necessaries input files are generated it is possible to train t
 The configuration file has several section specifying the model architectures (e.g. `bn` for useing batch normalization) and paths to all the files that are needed for training/evaluating the model. Take a look at the `config` folder for several examples.
 
 A special care needs to be taken for the following:
-- input_channels : this specify the number of channels of the training examples. For instance with mfccs with 13 coefficients this results in 39 (first order and second order derivatives are used)
-- conv_type : type of convolution to be used. If not `conv` the model will use `gated convolution` which will significantly increase the number of parameters of your model
-- [TEACHER] or [STUDENT] : under this section you can design the model. All the layers are specified with 4 lists containing for each layer : number of filters, kernel width , stride and dropout probability. All these lists **must** have equal length! 
+- `input_channels` : this specify the number of channels of the training examples. For instance with mfccs with 13 coefficients this results in 39 (first order and second order derivatives are used)
+- `conv_type` : type of convolution to be used. If not `conv` the model will use `gated convolution` which will significantly increase the number of parameters of your model
+- `[TEACHER]` or `[STUDENT]` : under this section you can design the model. All the layers are specified with 4 lists containing for each layer : number of filters, kernel width , stride and dropout probability. All these lists **must** have equal length! 
 
 ### Create Guidance
 
@@ -71,25 +71,25 @@ Each type of student training has its own specifics that need to be set.
 
 To train a student network with the distillation loss as in [(1)](#references) you need to specify additionally:
 
-- teacher_logits : path to the `tfrecord` file storing the teacher logits for each training example
-- temperature : the temperature used for distilling the logits
-- alpha : the weighting factor for the averaged loss (CTC + cross entropy between teacher and students logits)
+- `teacher_logits` : path to the `tfrecord` file storing the teacher logits for each training example
+- `temperature` : the temperature used for distilling the logits
+- `alpha` : the weighting factor for the averaged loss (CTC + cross entropy between teacher and students logits)
 
 ### Quantized Distilled Student
 
 The technique introduced by [(2)](#references) allows to introduce quantization in the distillation process. In addition to the parameters of the distillation, you need to set:
-- num_bits : number of bits for representing the quantized weights
-- bucket_size : for better result in scaling (applied before quantization) the weights are firstly bucketed to this size 
-- stochastic : use stochastic rounding in quantization
+- `num_bits` : number of bits for representing the quantized weights
+- `bucket_size` : for better result in scaling (applied before quantization) the weights are firstly bucketed to this size 
+- `stochastic` : use stochastic rounding in quantization
 
 ### FitNet
 
 To train the student network as presented in [(3)](#references) it is necessary to go through two stages. In the first stage the student netwok up to the specified layer is trained to match (MSE) the hidden representation of the teacher for each training examples.
 After this step is completed the whole student network is trained with the distillation loss as in [(1)](#references).
 Thus you need to specify:
-- teacher_hints : path to the hidden representations of the teacher model
-- stage : 1 for MSE or 2 for distillation loss
-- guided : all student layers <= this number are trained in the first stage
+- `teacher_hints` : path to the hidden representations of the teacher model
+- `stage` : 1 for MSE or 2 for distillation loss
+- `guided` : all student layers <= this number are trained in the first stage
 
 ## Post-mortem quantization
 
@@ -99,8 +99,39 @@ If you wisch to directly quantize a model you have trained with the quantization
     
 The quantization parameters are the same as for training a quantized student. Once the process is completed a separate folder containing the quantized model will be created. You can the use this folder to restore the model as deploy it.
 
-## Language Model
+## Decoding
 
+Once the models are trained it is possible to get the transcriptions for the data saved in the `tfrecords` files. In order to do so it is possible to use three different algorithms to decode the models probabilities over the vocabulary. To specify the algorithm to be used edit:
+
+- `beam_search` : if set to false the greedy decoder will be used otherwise the beam search
+
+It is possible to set the width of the beam search with `beam_width`. The trade off here is that a larger width is more likely to produce better results but it will more costly in terms of time and computation.
+
+
+### Language Model
+Additionally it is possible to integrate a language model in the beam search algorithm to obtain predictions contrained under the language model. Using a language model should improve significantly the results since the predictions will be pushed to be existing natural language words.
+
+In order to use the language model we rely on the work done by [Mozilla DeepSpeech project](https://github.com/mozilla/DeepSpeech) . 
+
+First of all you should downlaod all the necessary files via a script you can find [here](https://github.com/mozilla/DeepSpeech/blob/master/util/taskcluster.py). Most likely you will have some GPUs available to run this. When running this script do not forget to pass the argument `--arch gpu` to get the library compiled for GPU usage. 
+
+Once the download is completed you will have a folder containig a file `libctc_decoder_with_kenlm.so`. This is a shared library that will be loaded by Tensorflow via `tf.tf.load_op_library`. This will allow to call the function `ctc_beam_search_decoder_with_lm` which allows to use the beam search with the a language model.
+
+Secondly, in order to use this function you will need to provide :
+- a language model binarized with [kenlm](https://kheafield.com/code/kenlm/)
+- a trie with compressed pointers storing the vocabulary (see the structure documentation of [kenlm](https://kheafield.com/code/kenlm/))
+- an alphabet file (one character per line)
+
+For a quicker solution it is possible to rely on a pretrained model : always provided by [Mozilla DeepSpeech project](https://github.com/mozilla/DeepSpeech) . 
+It is possible to download all the files from [here](https://github.com/mozilla/DeepSpeech/blob/master/data/alphabet.txt) for the alphabet file and [here](https://github.com/mozilla/DeepSpeech/tree/master/data/lm) for the rest. The language model provided is trained on the training corpus transcriptions of the LibriSpeech corpus.
+
+Once the language file is ready and the custom operation too you can set the several parameters controlling the behaviour of the search algorithm. 
+Special care needs to be taken in the configuration file for the following:
+- `lm` : set to true 
+- `knlem_op` : path to `libctc_decoder_with_kenlm.so`
+- `lm_binary` : path to language model lm_binary
+- `lm_trie` : path to trie storing vocabulary
+- `lm_alphabet` : path to alphabet file
 
 
 ## References
