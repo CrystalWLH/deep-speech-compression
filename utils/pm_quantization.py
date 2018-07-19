@@ -25,7 +25,7 @@ def parse_args():
   parser.add_argument('--num-bits', default = 8, type = int, help ="Number of bits for quantization. Default : 8")
   parser.add_argument('--bucket', default = 256, type = int, help ="Bucket size for bucketing in quantization. Pass 0 for no bucketing. Default : 256")
   parser.add_argument('--stochastic', action = "store_true", help ="Use stochastic quantization")
-  parser.add_argument('--quant-last', action = "store_true", help ="Quantize last layer. ONLY FOR MODEL TRAINED WITH QUANTIZED DISTILLATION")
+#  parser.add_argument('--quant-last', action = "store_true", help ="Quantize last layer. ONLY FOR MODEL TRAINED WITH QUANTIZED DISTILLATION")
                       
   return parser.parse_args()
 
