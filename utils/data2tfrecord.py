@@ -43,7 +43,7 @@ def parse_args():
                       help='Representation of the audio to be used: `raw` (wave),`power` : power spectrogram, `mfccs` : MFCCs . Default to `mfccs`')
   parser.add_argument('-l', '--loss' , type = str, default = 'ctc', choices = ('ctc','asg'), 
                       help = 'Specify loss function since affects encoding of characters in transcriptions')
-  parser.add_argument('--sr', type = int, default = 16000, help = 'Sample rate with which audios are loaded. Default to : 16000')
+#  parser.add_argument('--sr', type = int, default = 16000, help = 'Sample rate with which audios are loaded. Default to : 16000')
   parser.add_argument('--limit',type = int, default = None, 
                       help = "Stop processing after having parsed this amount of audios. Default : stop only when job is done")
   
@@ -325,7 +325,7 @@ if __name__ == "__main__":
                              out_path = args.out,
                              split = split,
                              id2encoded_transc = encoded_transcriptions,
-                             sample_rate = args.sr,
+                             sample_rate = 16000,
                              form = args.format,
                              n_fft = 512,
                              hop_length = 160,
