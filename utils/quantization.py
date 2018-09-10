@@ -205,7 +205,6 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
     num_bits (int) : number of bits for quantizing weights
     bucket_size(int) : size of buckets for weights
     stochastic (bool) : use stochastic rounding in quantization
-    quant_last_layer (bool) : quantize weights of last layer
     
   :return:
     pre_out (tf.Tensor) : result of sequence of convolutions
@@ -268,10 +267,7 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
         prev_layer = tf.layers.dropout(prev_layer, rate=dropouts[layer], training=train, name="dropout")  
       
       tf.summary.histogram(layer_name, prev_layer)
-      
-#TODO
-# ADD BIAS, RM OPTION FOR QUANT_LAST
-  
+        
   with tf.variable_scope('logits',reuse=tf.AUTO_REUSE):
     
     in_channels = prev_layer.get_shape().as_list()[channels_axis]
@@ -279,20 +275,20 @@ def quant_conv_sequence(conv_type, inputs, filters, widths, strides,
     W_logits = tf.get_variable('logits', [1,in_channels,vocab_size])
     original_weights.append(W_logits)
     
-    W_quant = quantize_uniform(tensor = W, s = s, bucket_size = bucket_size, stochastic = stochastic)
-    quantized_weights.append(W_quant)
+    W_logits_quant = quantize_uniform(tensor = W_logits, s = s, bucket_size = bucket_size, stochastic = stochastic)
+    quantized_weights.append(W_logits_quant)
     
-    bias = tf.get_variable('bias', [vocab_size])
-    original_weights.append(bias)
+    bias_logits = tf.get_variable('bias', [vocab_size])
+    original_weights.append(bias_logits)
     
-    quant_bias = quantize_uniform(tensor = bias, s = s, bucket_size = bucket_size, stochastic = stochastic)
-    quantized_weights.append(quant_bias)
+    bias_logits_quant = quantize_uniform(tensor = bias_logits, s = s, bucket_size = bucket_size, stochastic = stochastic)
+    quantized_weights.append(bias_logits_quant)
     
     
-    logits = conv_op(value = prev_layer,filters = W_quant, stride = 1, padding = 'SAME',
+    logits = conv_op(value = prev_layer,filters = W_logits_quant, stride = 1, padding = 'SAME',
                         data_format= map_data_format.get(data_format), name = 'logits')
     
-    logits = tf.nn.bias_add(logits, quant_bias, bias_map.get(data_format))
+    logits = tf.nn.bias_add(logits, bias_logits_quant, bias_map.get(data_format))
       
   return logits,quantized_weights,original_weights  
 

@@ -134,6 +134,14 @@ Special care needs to be taken in the configuration file for the following:
 - `lm_alphabet` : path to alphabet file
 
 
+## Evaluation
+
+All the model are implemented in Tensorflow with the class `tf.Estimator`. Therefore, in order to evaluate the performances of the model trained in terms of LER and WER it is only needed to run:
+
+    python model_main.py --mode train --conf ./configs/model.config
+
+where in the model configuration file it is specified the path to the test set of LibriSpeech with the parameter `test_data`.
+
 ## References
 
 1) Hinton, Geoffrey, Oriol Vinyals, and Jeff Dean. "Distilling the knowledge in a neural network." arXiv preprint arXiv:1503.02531 (2015).
